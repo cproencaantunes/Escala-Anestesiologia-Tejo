@@ -166,7 +166,7 @@ td.col-ane .slot-name.is-me{background:rgba(16,185,129,0.1);border-radius:4px;pa
 </div>
 
 <script>
-const TSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vToZJwfBSPiUBuqx5ESyqdlDusL1zWRRJIOJJhRhod4NhmGHlPwfzlUK2pLcRo8JeMO8_ypvvTDDIFx/pub?gid=164072248&single=true&output=tsv";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwjGIYXdJZRCd47OKJfLyy4WI031sIgBt2VWa9WEz-R8IpFIQZ4whFsV-xa5B_a4yx8lA/exec";
 
 // ── TSV PARSER ──────────────────────────────────────────────────────────────
 const SALA_MAP = {
@@ -177,218 +177,6 @@ const SALA_MAP = {
   "Imagiologia": [26,27],"Consulta":    [36,null]
 };
 const TJEE_COLS = [28,29,30,31,32,33,34,35];
-
-function isTimeStr(s){
-  return s && /^\d{1,2}:\d{2}/.test(s.trim());
-}
-function parseDate(s){
-  if(!s) return null;
-  s = s.trim();
-  if(!s) return null;
-  // Serial number (Excel/Sheets date serial like 46083)
-  if(/^\d{5}$/.test(s)){
-    const serial = parseInt(s);
-    // Excel serial: days since 1899-12-30
-    const d = new Date((serial - 25569) * 86400 * 1000);
-    if(!isNaN(d)) return d.toISOString().slice(0,10);
-  }
-  // dd/mm/yyyy
-  let m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
-  if(m){
-    let y=parseInt(m[3]); if(y<100) y+=2000;
-    return `${y}-${String(parseInt(m[2])).padStart(2,'0')}-${String(parseInt(m[1])).padStart(2,'0')}`;
-  }
-  // yyyy-mm-dd
-  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
-  // mm/dd/yyyy (US format)
-  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if(m){
-    // disambiguate: if first number >12, it's dd/mm
-    const a=parseInt(m[1]),b=parseInt(m[2]),y=parseInt(m[3]);
-    if(a>12) return `${y}-${String(b).padStart(2,'0')}-${String(a).padStart(2,'0')}`;
-    return `${y}-${String(a).padStart(2,'0')}-${String(b).padStart(2,'0')}`;
-  }
-  // "9 de março de 2026" or similar Portuguese
-  const months={janeiro:1,fevereiro:2,março:3,abril:4,maio:5,junho:6,julho:7,agosto:8,setembro:9,outubro:10,novembro:11,dezembro:12};
-  m = s.toLowerCase().match(/(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})/);
-  if(m && months[m[2]]){
-    return `${m[3]}-${String(months[m[2]]).padStart(2,'0')}-${String(parseInt(m[1])).padStart(2,'0')}`;
-  }
-  return null;
-}
-function parseTime(s){
-  if(!s) return null;
-  s = s.trim();
-  // Serial fraction (e.g. 0.3125 = 07:30)
-  if(/^0\.\d+$/.test(s)){
-    const frac = parseFloat(s);
-    const totalMin = Math.round(frac * 24 * 60);
-    const h = Math.floor(totalMin/60), mn = totalMin%60;
-    return `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`;
-  }
-  // HH:MM or H:MM (possibly with seconds)
-  const m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
-  if(m) return `${String(parseInt(m[1])).padStart(2,'0')}:${m[2]}`;
-  return null;
-}
-function isAneSigla(s){
-  return s && /^[A-Z]{1,4}$/.test(s.trim());
-}
-
-function parseTSV(text){
-  const rows = text.split('\n').map(r => r.split('\t').map(c => (c||'').trim()));
-  const DATA = {}, EE = {}, PREV = {};
-  let tjeeNames = null;
-  let currentDay = null;
-  let salaState = {};
-
-  function flushSala(sala){
-    if(salaState[sala]){
-      if(!DATA[currentDay][sala]) DATA[currentDay][sala]=[];
-      DATA[currentDay][sala].push({...salaState[sala]});
-      salaState[sala]=null;
-    }
-  }
-  function flushAll(){
-    Object.keys(SALA_MAP).forEach(s=>flushSala(s));
-  }
-
-  // Find TJEE header rows
-  let tjeeHeaderRows = [];
-  rows.forEach((r,i)=>{
-    if(r[28] && r[28].startsWith('TJEE')) tjeeHeaderRows.push(i);
-  });
-  if(tjeeHeaderRows.length>0){
-    tjeeNames = {};
-    TJEE_COLS.forEach(c=>{ tjeeNames[c] = rows[tjeeHeaderRows[0]][c]||`TJEE${c}`; });
-  }
-
-  const tjeeDataRows = new Set();
-  tjeeHeaderRows.forEach(hr=>{
-    for(let i=hr;i<=hr+5;i++) tjeeDataRows.add(i);
-  });
-
-  // DEBUG: collect info for console
-  const debugDates = [];
-
-  rows.forEach((r, i) => {
-    const colA = r[0]||'';
-    const colB = r[1]||'';
-
-    // New day detection
-    const d = parseDate(colA);
-    if(d){
-      debugDates.push({row:i, raw:colA, parsed:d});
-      flushAll();
-      currentDay = d;
-      DATA[d] = DATA[d]||{};
-      EE[d] = EE[d]||[];
-      salaState = {};
-    }
-    if(!currentDay) return;
-
-    // PREVENÇÃO
-    if(r[28]==='PREVENÇÃO'){
-      const siglaRow = rows[i+2];
-      if(siglaRow){
-        const sig = siglaRow[28]||'';
-        if(isAneSigla(sig)) PREV[currentDay] = sig;
-      }
-    }
-
-    // Skip TJEE header rows
-    if(r[28] && r[28].startsWith('TJEE')) return;
-
-    // Time row
-    const t = parseTime(colB);
-    if(!t) return;
-
-    // Skip rows that are part of TJEE data blocks (no time in col B normally)
-    // but still process if they have a valid time
-
-    Object.entries(SALA_MAP).forEach(([sala,[cirC,aneC]])=>{
-      const cir = r[cirC]||null;
-      const ane = aneC!=null ? (r[aneC]||null) : null;
-      const cirClean = cir && cir.length>1 ? cir : null;
-      const aneClean = (ane && isAneSigla(ane)) ? ane : null;
-
-      if(cirClean){
-        const prev = salaState[sala];
-        if(prev && prev.cir===cirClean && prev.ane===aneClean){
-          salaState[sala].end = t;
-        } else {
-          flushSala(sala);
-          salaState[sala] = {start:t, end:t, cir:cirClean, ane:aneClean};
-        }
-      } else {
-        flushSala(sala);
-      }
-    });
-  });
-  flushAll();
-
-  // Parse TJEE EE blocks
-  const dayList = Object.keys(DATA).sort();
-  const dayStartRows = {};
-  rows.forEach((r,i)=>{ const d=parseDate(r[0]||''); if(d&&!dayStartRows[d]) dayStartRows[d]=i; });
-
-  tjeeHeaderRows.forEach(hr=>{
-    let blockDay = null;
-    for(let di=dayList.length-1;di>=0;di--){
-      const ds = dayStartRows[dayList[di]];
-      if(ds!==undefined && ds<=hr){ blockDay=dayList[di]; break; }
-    }
-    if(!blockDay) return;
-
-    const dayTjee = tjeeHeaderRows.filter(h=>{
-      for(let di=dayList.length-1;di>=0;di--){
-        const ds=dayStartRows[dayList[di]];
-        if(ds!==undefined&&ds<=h){ return dayList[di]===blockDay; }
-      }
-      return false;
-    });
-    const periodoIdx = dayTjee.indexOf(hr);
-    const periodo = periodoIdx===0?'Manhã':'Tarde';
-
-    if(!EE[blockDay]) EE[blockDay]=[];
-    TJEE_COLS.forEach(c=>{
-      const medico = rows[hr+2]?.[c]||'';
-      if(!medico || medico.length<2) return;
-      const horario = (rows[hr+3]?.[c]||'').replace(/^(\d{2}:\d{2}):\d{2}$/,'$1');
-      const nexames = rows[hr+4]?.[c]||'';
-      const ane = rows[hr+5]?.[c]||'';
-      EE[blockDay].push({
-        sala: tjeeNames?.[c]||`TJEE${c}`,
-        periodo,
-        medico,
-        horario,
-        nexames,
-        ane: isAneSigla(ane)?ane:null
-      });
-    });
-  });
-
-  // Sunday prevention (after last day rows)
-  const lastDay = dayList[dayList.length-1];
-  const lastDayRow = dayStartRows[lastDay]||0;
-  for(let i=lastDayRow+1;i<rows.length;i++){
-    if(rows[i][28]==='PREVENÇÃO'){
-      const sig=(rows[i+2]?.[28]||'');
-      if(isAneSigla(sig)){
-        const ld=new Date(lastDay+'T12:00:00');
-        ld.setDate(ld.getDate()+1);
-        PREV[ld.toISOString().slice(0,10)]=sig;
-      }
-      break;
-    }
-  }
-
-  console.log('Parsed days:', dayList);
-  console.log('Date debug:', debugDates);
-  console.log('PREV:', PREV);
-  return {DATA, EE, PREV};
-}
 
 // ── LOADING STATE ───────────────────────────────────────────────────────────
 let DATA={}, EE={}, PREV={};
@@ -406,13 +194,13 @@ function showError(msg){
 async function loadData(){
   try{
     showLoading();
-    const res = await fetch(TSV_URL, {cache:'no-store'});
+    const res = await fetch(APPS_SCRIPT_URL, {cache:'no-store'});
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
-    const parsed = parseTSV(text);
-    DATA = parsed.DATA;
-    EE = parsed.EE;
-    PREV = parsed.PREV;
+    const json = await res.json();
+    if(json.error) throw new Error(json.error);
+    DATA = json.DATA;
+    EE = json.EE;
+    PREV = json.PREV;
     dataLoaded = true;
     render();
   } catch(e){
