@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""
+build.py — lê ESCALA_HTJO.xlsx e gera index.html com os dados actualizados.
+Usado pelo GitHub Actions sempre que o Excel é actualizado.
+"""
+import openpyxl
+import datetime
+import json
+import re
+import sys
+import os
+
+XLSX = "ESCALA_HTJO.xlsx"
+TEMPLATE = "template.html"
+OUTPUT = "index.html"
+
+# ── Column mapping ──────────────────────────────────────────────────────────
+SALA_COLS = {
+    "Sala 1":      (3, 4),
+    "Sala 2":      (5, 6),
+    "Sala 3":      (7, 8),
+    "Sala 4":      (9, 10),
+    "Sala 5":      (11, 12),
+    "Sala 6":      (13, 14),
+    "Sala 7":      (15, 16),
+    "Sala 8":      (17, 18),
+    "Sala 9":      (19, 20),
+    "Sala 10":     (21, 22),
+    "Angio Piso 0":(23, 24),
+    "Angio Piso 1":(25, 26),
+    "Imagiologia": (27, 28),
+    "Consulta":    (37, None),
+}
+TJEE_COLS = [29, 30, 31, 32, 33, 34, 35, 36]
+
+
+def fmt_time(t):
+    if isinstance(t, datetime.time):
+        return f"{t.hour:02d}:{t.minute:02d}"
+    if isinstance(t, str):
+        t = t.strip()
+        # normalise various formats
+        t = re.sub(r'\s*-\s*', '-', t)
+        return t
+    return str(t).strip() if t else ""
+
+
+def parse_bloco(ws, day_starts):
+    """Parse bloco operatório slots for each day."""
+    data = {}
+    days_sorted = sorted(day_starts.items())
+
+    for i, (day, day_row) in enumerate(days_sorted):
+        day_end = days_sorted[i + 1][1] if i + 1 < len(days_sorted) else ws.max_row + 1
+        data[day] = {}
+
+        # Collect all time rows for this day
+        time_rows = []
+        for r in range(day_row, day_end):
+            v = ws.cell(r, 2).value
+            if isinstance(v, datetime.time):
+                time_rows.append((r, v))
+
+        for sala, (cir_col, ane_col) in SALA_COLS.items():
+            slots = []
+            current = None
+            for r, t in time_rows:
+                cir = ws.cell(r, cir_col).value
+                ane = ws.cell(r, ane_col).value if ane_col else None
+
+                cir = str(cir).strip() if cir else None
+                ane = str(ane).strip() if ane else None
+                if ane and not re.match(r'^[A-Z]{1,4}$', ane):
+                    ane = None
+
+                if cir:
+                    if current and current["cir"] == cir and current.get("ane") == ane:
+                        current["end"] = fmt_time(t)
+                    else:
+                        if current:
+                            slots.append(current)
+                        current = {
+                            "start": fmt_time(t),
+                            "end": fmt_time(t),
+                            "cir": cir,
+                            "ane": ane,
+                        }
+                else:
+                    if current:
+                        slots.append(current)
+                        current = None
+            if current:
+                slots.append(current)
+
+            if slots:
+                data[day][sala] = slots
+
+    return data
+
+
+def parse_ee(ws, day_starts):
+    """Parse Exames Especiais (TJEE) blocks."""
+    # Find all TJEE header rows
+    all_tjee_rows = []
+    for r in range(1, ws.max_row + 1):
+        v = ws.cell(r, 29).value
+        if v and str(v).strip().startswith("TJEE"):
+            all_tjee_rows.append(r)
+
+    tjee_names = {c: str(ws.cell(all_tjee_rows[0], c).value).strip() for c in TJEE_COLS}
+
+    days_sorted = sorted(day_starts.items())
+    ee = {}
+
+    for i, (day, day_row) in enumerate(days_sorted):
+        day_end = days_sorted[i + 1][1] if i + 1 < len(days_sorted) else ws.max_row + 1
+        day_tjee = [r for r in all_tjee_rows if day_row <= r < day_end]
+        ee[day] = []
+
+        for block_idx, block_r in enumerate(day_tjee):
+            periodo = "Manhã" if block_idx == 0 else "Tarde"
+            for c in TJEE_COLS:
+                medico = ws.cell(block_r + 2, c).value
+                horario = ws.cell(block_r + 3, c).value
+                nexames = ws.cell(block_r + 4, c).value
+                ane = ws.cell(block_r + 5, c).value
+
+                medico = str(medico).strip() if medico else None
+                if not medico or medico.strip() == " " * len(medico):
+                    continue
+                horario = str(horario).strip() if horario else ""
+                # clean up time-only values like "14:30:00"
+                horario = re.sub(r'^(\d{2}:\d{2}):\d{2}$', r'\1', horario)
+                nexames = str(nexames).strip() if nexames else ""
+                ane = str(ane).strip() if ane else None
+                if ane and not re.match(r'^[A-Z]{1,4}$', ane):
+                    ane = None
+
+                ee[day].append({
+                    "sala": tjee_names[c],
+                    "periodo": periodo,
+                    "medico": medico,
+                    "horario": horario,
+                    "nexames": nexames,
+                    "ane": ane,
+                })
+
+    return ee
+
+
+def parse_prev(ws, day_starts):
+    """Parse anestesista de prevenção per day (col 29, 2 rows after PREVENÇÃO label)."""
+    days_sorted = sorted(day_starts.items())
+    prev = {}
+
+    for i, (day, day_row) in enumerate(days_sorted):
+        day_end = days_sorted[i + 1][1] if i + 1 < len(days_sorted) else ws.max_row + 1
+        for r in range(day_row, day_end):
+            v = ws.cell(r, 29).value
+            if v and str(v).strip() == "PREVENÇÃO":
+                sigla = ws.cell(r + 2, 29).value
+                if sigla:
+                    prev[day] = str(sigla).strip()
+                break
+
+    # Also check rows after last day for Sunday-only prevention
+    last_day_end = days_sorted[-1][1] if days_sorted else 1
+    for r in range(last_day_end, ws.max_row + 1):
+        v = ws.cell(r, 29).value
+        if v and str(v).strip() == "PREVENÇÃO":
+            sigla = ws.cell(r + 2, 29).value
+            # Determine date from context — check col A nearby
+            for rr in range(r - 5, r + 1):
+                d = ws.cell(rr, 1).value
+                if isinstance(d, datetime.datetime):
+                    day = d.strftime("%Y-%m-%d")
+                    if sigla:
+                        prev[day] = str(sigla).strip()
+                    break
+            else:
+                # no date found — use day after last known
+                if days_sorted and sigla:
+                    last = datetime.date.fromisoformat(days_sorted[-1][0])
+                    sunday = last + datetime.timedelta(days=1)
+                    prev[sunday.isoformat()] = str(sigla).strip()
+            break
+
+    return prev
+
+
+def main():
+    if not os.path.exists(XLSX):
+        print(f"ERROR: {XLSX} not found", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.exists(TEMPLATE):
+        print(f"ERROR: {TEMPLATE} not found", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Reading {XLSX}...")
+    wb = openpyxl.load_workbook(XLSX, data_only=True)
+    ws = wb["ESCALA SEMANAL"]
+
+    # Find day starts
+    day_starts = {}
+    for r in range(1, ws.max_row + 1):
+        v = ws.cell(r, 1).value
+        if isinstance(v, datetime.datetime):
+            d = v.strftime("%Y-%m-%d")
+            if d not in day_starts:
+                day_starts[d] = r
+
+    print(f"Found days: {sorted(day_starts.keys())}")
+
+    data = parse_bloco(ws, day_starts)
+    ee = parse_ee(ws, day_starts)
+    prev = parse_prev(ws, day_starts)
+
+    print(f"PREV: {prev}")
+
+    # Read template
+    with open(TEMPLATE, "r", encoding="utf-8") as f:
+        template = f.read()
+
+    # Inject data
+    output = template
+    output = output.replace("%%DATA%%", f"const DATA={json.dumps(data, ensure_ascii=False)};")
+    output = output.replace("%%EE%%", f"const EE={json.dumps(ee, ensure_ascii=False)};")
+    output = output.replace("%%PREV%%", f"const PREV={json.dumps(prev, ensure_ascii=False)};")
+
+    with open(OUTPUT, "w", encoding="utf-8") as f:
+        f.write(output)
+
+    print(f"Written {OUTPUT} ({len(output):,} bytes)")
+
+
+if __name__ == "__main__":
+    main()
