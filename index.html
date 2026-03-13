@@ -1,237 +1,668 @@
-#!/usr/bin/env python3
-"""
-build.py — lê ESCALA_HTJO.xlsx e gera index.html com os dados actualizados.
-Usado pelo GitHub Actions sempre que o Excel é actualizado.
-"""
-import openpyxl
-import datetime
-import json
-import re
-import sys
-import os
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0f1e">
+<title>Escala HTJO</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0f1e;--bg2:#111827;--bg3:#1a2236;--card:#161d2e;--border:#1e2d45;--accent:#3b82f6;--cyan:#06b6d4;--green:#10b981;--amber:#f59e0b;--red:#ef4444;--text:#e2e8f0;--muted:#64748b;--faint:#1e2d45;--mono:'DM Mono',monospace;--sans:'Syne',sans-serif;}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);overscroll-behavior:none;}
 
-XLSX = "ESCALA_HTJO.xlsx"
-TEMPLATE = "template.html"
-OUTPUT = "index.html"
+/* ONBOARDING */
+#onboarding{position:fixed;inset:0;background:var(--bg);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;gap:24px;}
+.ob-title{font-size:28px;font-weight:800;letter-spacing:-1px;text-align:center;}
+.ob-title span{color:var(--accent);}
+.ob-sub{font-family:var(--mono);font-size:13px;color:var(--muted);text-align:center;}
+.sigla-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;width:100%;max-width:360px;}
+.sigla-btn{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 4px;font-family:var(--mono);font-size:13px;font-weight:500;color:var(--text);cursor:pointer;text-align:center;transition:all .15s;}
+.sigla-btn.sel{background:var(--accent);border-color:var(--accent);color:#fff;}
+.ob-confirm{width:100%;max-width:360px;background:var(--accent);border:none;border-radius:12px;padding:14px;font-family:var(--sans);font-size:15px;font-weight:700;color:#fff;cursor:pointer;opacity:0.4;pointer-events:none;transition:opacity .2s;}
+.ob-confirm.ready{opacity:1;pointer-events:auto;}
 
-# ── Column mapping ──────────────────────────────────────────────────────────
-SALA_COLS = {
-    "Sala 1":      (3, 4),
-    "Sala 2":      (5, 6),
-    "Sala 3":      (7, 8),
-    "Sala 4":      (9, 10),
-    "Sala 5":      (11, 12),
-    "Sala 6":      (13, 14),
-    "Sala 7":      (15, 16),
-    "Sala 8":      (17, 18),
-    "Sala 9":      (19, 20),
-    "Sala 10":     (21, 22),
-    "Angio Piso 0":(23, 24),
-    "Angio Piso 1":(25, 26),
-    "Imagiologia": (27, 28),
-    "Consulta":    (37, None),
+/* HEADER */
+.header{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(10,15,30,0.96);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding:env(safe-area-inset-top,0) 0 0;}
+.header-inner{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 8px;}
+.logo{font-size:16px;font-weight:800;letter-spacing:-0.5px;}
+.logo span{color:var(--accent);}
+.header-right{display:flex;align-items:center;gap:10px;}
+.sigla-pill{font-family:var(--mono);font-size:12px;font-weight:500;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);color:var(--accent);padding:3px 10px;border-radius:20px;cursor:pointer;}
+.clock-pill{font-family:var(--mono);font-size:11px;color:var(--cyan);background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.2);padding:3px 8px;border-radius:20px;}
+.nav{display:flex;border-bottom:1px solid var(--border);}
+.nav-tab{flex:1;font-family:var(--mono);font-size:11px;color:var(--muted);padding:8px 4px;text-align:center;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;}
+.nav-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+
+/* MAIN */
+.main{padding-top:calc(env(safe-area-inset-top,0px) + 100px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 24px);min-height:100%;}
+
+/* ── MEU TURNO ── */
+.next-card{margin:12px 12px 4px;background:linear-gradient(135deg,rgba(59,130,246,0.15),rgba(6,182,212,0.08));border:1px solid rgba(59,130,246,0.35);border-radius:16px;padding:14px 16px;}
+.next-card.on-now{background:linear-gradient(135deg,rgba(16,185,129,0.15),rgba(16,185,129,0.05));border-color:rgba(16,185,129,0.4);}
+.next-label{font-family:var(--mono);font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;}
+.on-now .next-label{color:var(--green);}
+.next-time{font-size:26px;font-weight:800;letter-spacing:-1px;line-height:1;}
+.on-now .next-time{color:var(--green);}
+.next-meta{font-family:var(--mono);font-size:12px;color:var(--cyan);margin-top:4px;}
+.next-partner{font-size:13px;color:var(--muted);margin-top:6px;}
+.next-partner strong{color:var(--text);}
+.section-hdr{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;padding:14px 14px 6px;display:flex;align-items:center;gap:8px;}
+.section-hdr::after{content:'';flex:1;height:1px;background:var(--border);}
+.turno-card{margin:0 12px 8px;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.turno-card.active-now{border-color:rgba(16,185,129,0.5);}
+.turno-row{display:flex;align-items:stretch;gap:10px;padding:11px 14px;}
+.turno-bar{width:3px;border-radius:2px;background:var(--accent);opacity:0.5;flex-shrink:0;}
+.turno-bar.now{background:var(--green);opacity:1;}
+.turno-info{flex:1;min-width:0;}
+.turno-time{font-family:var(--mono);font-size:12px;color:var(--muted);}
+.turno-sala{font-size:15px;font-weight:700;margin:2px 0;}
+.turno-cir{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.turno-cir strong{color:var(--cyan);font-weight:600;}
+
+/* ── SALAS AGORA ── */
+.agora-grid{padding:0 12px;}
+.agora-card{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:8px;overflow:hidden;}
+.agora-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg3);border-bottom:1px solid var(--border);}
+.agora-sala{font-size:13px;font-weight:700;}
+.agora-time{font-family:var(--mono);font-size:11px;color:var(--muted);}
+.agora-body{padding:10px 14px;display:flex;flex-direction:column;gap:4px;}
+.agora-person.cir{color:var(--text);font-weight:600;font-size:13px;}
+.agora-person.ane{font-family:var(--mono);font-size:12px;color:var(--cyan);}
+.agora-person.ane.me{color:var(--green);font-weight:600;}
+.empty-msg{text-align:center;padding:40px 24px;color:var(--muted);font-size:13px;font-family:var(--mono);}
+
+/* ══════════════════════════════════════
+   GRELHA EQUIPA — estilo spreadsheet
+══════════════════════════════════════ */
+.grelha-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:0 0 16px;}
+
+/* day tabs inside equipa */
+.day-tabs{display:flex;gap:4px;padding:10px 12px 6px;overflow-x:auto;scrollbar-width:none;}
+.day-tabs::-webkit-scrollbar{display:none;}
+.day-tab{flex-shrink:0;font-family:var(--mono);font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;}
+.day-tab.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.day-tab.today{border-color:var(--green);color:var(--green);}
+.day-tab.today.active{background:var(--green);color:#fff;}
+
+table.grelha{border-collapse:collapse;font-family:var(--mono);font-size:11px;min-width:100%;}
+table.grelha th,table.grelha td{border:1px solid var(--border);padding:0;vertical-align:top;}
+
+/* sticky first col */
+table.grelha td.posto-cell,table.grelha th.posto-hdr{
+  position:sticky;left:0;z-index:2;
+  background:var(--bg3);
+  min-width:90px;max-width:90px;width:90px;
 }
-TJEE_COLS = [29, 30, 31, 32, 33, 34, 35, 36]
+table.grelha th.posto-hdr{background:var(--bg2);z-index:3;}
 
+/* header row */
+table.grelha thead th{
+  background:var(--bg2);color:var(--muted);
+  font-size:10px;text-transform:uppercase;letter-spacing:.5px;
+  padding:6px 8px;white-space:nowrap;text-align:center;
+}
+table.grelha thead th.col-cir{color:var(--text);}
+table.grelha thead th.col-ane{color:var(--cyan);}
 
-def fmt_time(t):
-    if isinstance(t, datetime.time):
-        return f"{t.hour:02d}:{t.minute:02d}"
-    if isinstance(t, str):
-        t = t.strip()
-        # normalise various formats
-        t = re.sub(r'\s*-\s*', '-', t)
-        return t
-    return str(t).strip() if t else ""
+/* posto label cell */
+.posto-cell{padding:8px 8px!important;font-size:11px;font-weight:500;color:var(--text);line-height:1.3;}
+.posto-cell.special{color:var(--amber);}
 
+/* data cells */
+td.col-cir,td.col-ane{min-width:96px;max-width:130px;padding:0!important;}
 
-def parse_bloco(ws, day_starts):
-    """Parse bloco operatório slots for each day."""
-    data = {}
-    days_sorted = sorted(day_starts.items())
+/* slot block inside cell */
+.cell-slots{display:flex;flex-direction:column;}
+.cell-slot{padding:5px 7px;border-bottom:1px solid var(--faint);line-height:1.35;}
+.cell-slot:last-child{border-bottom:none;}
+.slot-name{font-size:11px;color:var(--text);font-weight:500;word-break:break-word;}
+.slot-name.ane-name{color:var(--cyan);}
+.slot-name.ane-name.is-me{color:var(--green);font-weight:700;}
+.slot-t{font-size:9px;color:var(--muted);margin-top:1px;}
+td.col-cir .slot-name{color:var(--text);}
+td.empty-cell{background:var(--bg);}
 
-    for i, (day, day_row) in enumerate(days_sorted):
-        day_end = days_sorted[i + 1][1] if i + 1 < len(days_sorted) else ws.max_row + 1
-        data[day] = {}
+/* section separator */
+tr.section-sep td{background:var(--bg2);padding:5px 8px!important;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--amber);font-family:var(--mono);border-top:2px solid var(--amber);}
 
-        # Collect all time rows for this day
-        time_rows = []
-        for r in range(day_row, day_end):
-            v = ws.cell(r, 2).value
-            if isinstance(v, datetime.time):
-                time_rows.append((r, v))
+/* highlight my ANE column */
+td.col-ane .slot-name.is-me{background:rgba(16,185,129,0.1);border-radius:4px;padding:1px 3px;}
 
-        for sala, (cir_col, ane_col) in SALA_COLS.items():
-            slots = []
-            current = None
-            for r, t in time_rows:
-                cir = ws.cell(r, cir_col).value
-                ane = ws.cell(r, ane_col).value if ane_col else None
+.fade-in{animation:fi .18s ease;}
+@keyframes fi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.hidden{display:none!important;}
+</style>
+</head>
+<body>
 
-                cir = str(cir).strip() if cir else None
-                ane = str(ane).strip() if ane else None
-                if ane and not re.match(r'^[A-Z]{1,4}$', ane):
-                    ane = None
+<!-- ONBOARDING -->
+<div id="onboarding">
+  <div class="ob-title">ESCALA <span>HTJO</span></div>
+  <div class="ob-sub">Selecciona a tua sigla de anestesista</div>
+  <div class="sigla-grid" id="sigla-grid"></div>
+  <button class="ob-confirm" id="ob-confirm" onclick="confirmSigla()">Confirmar</button>
+</div>
 
-                if cir:
-                    if current and current["cir"] == cir and current.get("ane") == ane:
-                        current["end"] = fmt_time(t)
-                    else:
-                        if current:
-                            slots.append(current)
-                        current = {
-                            "start": fmt_time(t),
-                            "end": fmt_time(t),
-                            "cir": cir,
-                            "ane": ane,
-                        }
-                else:
-                    if current:
-                        slots.append(current)
-                        current = None
-            if current:
-                slots.append(current)
+<!-- APP -->
+<div id="app" class="hidden">
+  <div class="header">
+    <div class="header-inner">
+      <div class="logo">ESCALA <span>HTJO</span></div>
+      <div class="header-right">
+        <div class="sigla-pill" id="sigla-display" onclick="changeSigla()">—</div>
+        <div class="clock-pill" id="clock">--:--</div>
+      </div>
+    </div>
+    <div class="nav">
+      <div class="nav-tab active" id="tab-meus" onclick="switchTab('meus')">Os meus turnos</div>
+      <div class="nav-tab" id="tab-agora" onclick="switchTab('agora')">Salas agora</div>
+      <div class="nav-tab" id="tab-equipa" onclick="switchTab('equipa')">Equipa</div>
+    </div>
+  </div>
+  <div class="main" id="main"></div>
+</div>
 
-            if slots:
-                data[day][sala] = slots
+<script>
+const TSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vToZJwfBSPiUBuqx5ESyqdlDusL1zWRRJIOJJhRhod4NhmGHlPwfzlUK2pLcRo8JeMO8_ypvvTDDIFx/pub?gid=164072248&single=true&output=tsv";
 
-    return data
+// ── TSV PARSER ──────────────────────────────────────────────────────────────
+const SALA_MAP = {
+  "Sala 1":      [2,3],  "Sala 2":      [4,5],  "Sala 3":      [6,7],
+  "Sala 4":      [8,9],  "Sala 5":      [10,11], "Sala 6":      [12,13],
+  "Sala 7":      [14,15],"Sala 8":      [16,17], "Sala 9":      [18,19],
+  "Sala 10":     [20,21],"Angio Piso 0":[22,23], "Angio Piso 1":[24,25],
+  "Imagiologia": [26,27],"Consulta":    [36,null]
+};
+const TJEE_COLS = [28,29,30,31,32,33,34,35];
 
+function isTimeStr(s){
+  return s && /^\d{1,2}:\d{2}/.test(s.trim());
+}
+function isDate(s){
+  return s && /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(s.trim());
+}
+function isDateISO(s){
+  return s && /^\d{4}-\d{2}-\d{2}/.test(s.trim());
+}
+function parseDate(s){
+  s = s.trim();
+  // Google Sheets exports dates as dd/mm/yyyy or similar
+  const m = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if(m){
+    let y = parseInt(m[3]); if(y<100) y+=2000;
+    return `${y}-${String(parseInt(m[2])).padStart(2,'0')}-${String(parseInt(m[1])).padStart(2,'0')}`;
+  }
+  // Already ISO
+  if(isDateISO(s)) return s.slice(0,10);
+  return null;
+}
+function parseTime(s){
+  if(!s) return null;
+  s = s.trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if(m) return `${String(parseInt(m[1])).padStart(2,'0')}:${m[2]}`;
+  return null;
+}
+function isAneSigla(s){
+  return s && /^[A-Z]{1,4}$/.test(s.trim());
+}
 
-def parse_ee(ws, day_starts):
-    """Parse Exames Especiais (TJEE) blocks."""
-    # Find all TJEE header rows
-    all_tjee_rows = []
-    for r in range(1, ws.max_row + 1):
-        v = ws.cell(r, 29).value
-        if v and str(v).strip().startswith("TJEE"):
-            all_tjee_rows.append(r)
+function parseTSV(text){
+  const rows = text.split('\n').map(r => r.split('\t'));
+  const DATA = {}, EE = {}, PREV = {};
+  let tjeeNames = null;
+  let currentDay = null;
+  // Per-sala tracking for slot merging
+  let salaState = {};  // sala -> {cir, ane, start, end}
 
-    tjee_names = {c: str(ws.cell(all_tjee_rows[0], c).value).strip() for c in TJEE_COLS}
+  function flushSala(sala){
+    if(salaState[sala]){
+      if(!DATA[currentDay][sala]) DATA[currentDay][sala]=[];
+      DATA[currentDay][sala].push({...salaState[sala]});
+      salaState[sala]=null;
+    }
+  }
+  function flushAll(){
+    Object.keys(SALA_MAP).forEach(s=>flushSala(s));
+  }
 
-    days_sorted = sorted(day_starts.items())
-    ee = {}
+  // Find TJEE header row (has "TJEE" in col 28)
+  let tjeeHeaderRows = [];
+  rows.forEach((r,i)=>{
+    if(r[28] && r[28].trim().startsWith('TJEE')) tjeeHeaderRows.push(i);
+  });
+  if(tjeeHeaderRows.length>0){
+    tjeeNames = {};
+    TJEE_COLS.forEach(c=>{ tjeeNames[c] = (rows[tjeeHeaderRows[0]][c]||'').trim(); });
+  }
 
-    for i, (day, day_row) in enumerate(days_sorted):
-        day_end = days_sorted[i + 1][1] if i + 1 < len(days_sorted) else ws.max_row + 1
-        day_tjee = [r for r in all_tjee_rows if day_row <= r < day_end]
-        ee[day] = []
+  // Determine which rows are "TJEE data blocks" to skip during bloco parsing
+  const tjeeDataRows = new Set();
+  tjeeHeaderRows.forEach(hr=>{
+    for(let i=hr;i<=hr+5;i++) tjeeDataRows.add(i);
+  });
 
-        for block_idx, block_r in enumerate(day_tjee):
-            periodo = "Manhã" if block_idx == 0 else "Tarde"
-            for c in TJEE_COLS:
-                medico = ws.cell(block_r + 2, c).value
-                horario = ws.cell(block_r + 3, c).value
-                nexames = ws.cell(block_r + 4, c).value
-                ane = ws.cell(block_r + 5, c).value
+  // Parse day by day
+  rows.forEach((r, i) => {
+    const colA = (r[0]||'').trim();
+    const colB = (r[1]||'').trim();
 
-                medico = str(medico).strip() if medico else None
-                if not medico or medico.strip() == " " * len(medico):
-                    continue
-                horario = str(horario).strip() if horario else ""
-                # clean up time-only values like "14:30:00"
-                horario = re.sub(r'^(\d{2}:\d{2}):\d{2}$', r'\1', horario)
-                nexames = str(nexames).strip() if nexames else ""
-                ane = str(ane).strip() if ane else None
-                if ane and not re.match(r'^[A-Z]{1,4}$', ane):
-                    ane = None
+    // New day?
+    const d = parseDate(colA);
+    if(d){
+      flushAll();
+      currentDay = d;
+      DATA[d] = DATA[d]||{};
+      EE[d] = EE[d]||[];
+      salaState = {};
+    }
+    if(!currentDay) return;
 
-                ee[day].append({
-                    "sala": tjee_names[c],
-                    "periodo": periodo,
-                    "medico": medico,
-                    "horario": horario,
-                    "nexames": nexames,
-                    "ane": ane,
-                })
+    // PREVENÇÃO row?
+    const col28 = (r[28]||'').trim();
+    if(col28 === 'PREVENÇÃO'){
+      // sigla is 2 rows later
+      const siglaRow = rows[i+2];
+      if(siglaRow){
+        const sig = (siglaRow[28]||'').trim();
+        if(isAneSigla(sig)) PREV[currentDay] = sig;
+      }
+    }
 
-    return ee
+    // TJEE header row — record names and skip
+    if(col28.startsWith('TJEE')){
+      // handled separately below
+      return;
+    }
 
+    // TJEE data rows (medico / horario / nexames / ane) — skip for bloco
+    if(tjeeDataRows.has(i) && !parseTime(colB)) return;
 
-def parse_prev(ws, day_starts):
-    """Parse anestesista de prevenção per day (col 29, 2 rows after PREVENÇÃO label)."""
-    days_sorted = sorted(day_starts.items())
-    prev = {}
+    // Time row — bloco parsing
+    const t = parseTime(colB);
+    if(!t) return;
 
-    for i, (day, day_row) in enumerate(days_sorted):
-        day_end = days_sorted[i + 1][1] if i + 1 < len(days_sorted) else ws.max_row + 1
-        for r in range(day_row, day_end):
-            v = ws.cell(r, 29).value
-            if v and str(v).strip() == "PREVENÇÃO":
-                sigla = ws.cell(r + 2, 29).value
-                if sigla:
-                    prev[day] = str(sigla).strip()
-                break
+    Object.entries(SALA_MAP).forEach(([sala,[cirC,aneC]])=>{
+      const cir = (r[cirC]||'').trim()||null;
+      const ane = aneC!=null ? ((r[aneC]||'').trim()||null) : null;
+      const aneClean = (ane && isAneSigla(ane)) ? ane : null;
 
-    # Also check rows after last day for Sunday-only prevention
-    last_day_end = days_sorted[-1][1] if days_sorted else 1
-    for r in range(last_day_end, ws.max_row + 1):
-        v = ws.cell(r, 29).value
-        if v and str(v).strip() == "PREVENÇÃO":
-            sigla = ws.cell(r + 2, 29).value
-            # Determine date from context — check col A nearby
-            for rr in range(r - 5, r + 1):
-                d = ws.cell(rr, 1).value
-                if isinstance(d, datetime.datetime):
-                    day = d.strftime("%Y-%m-%d")
-                    if sigla:
-                        prev[day] = str(sigla).strip()
-                    break
-            else:
-                # no date found — use day after last known
-                if days_sorted and sigla:
-                    last = datetime.date.fromisoformat(days_sorted[-1][0])
-                    sunday = last + datetime.timedelta(days=1)
-                    prev[sunday.isoformat()] = str(sigla).strip()
-            break
+      if(cir){
+        const prev = salaState[sala];
+        if(prev && prev.cir===cir && prev.ane===aneClean){
+          salaState[sala].end = t;
+        } else {
+          flushSala(sala);
+          salaState[sala] = {start:t, end:t, cir, ane:aneClean};
+        }
+      } else {
+        flushSala(sala);
+      }
+    });
+  });
+  flushAll();
 
-    return prev
+  // Parse TJEE EE blocks
+  // Each day has 2 TJEE header rows (manhã + tarde)
+  // Group by day
+  let dayRows = [];
+  let dayIdx = -1;
+  const dayList = Object.keys(DATA).sort();
+  rows.forEach((r,i)=>{
+    const d = parseDate((r[0]||'').trim());
+    if(d) dayIdx = dayList.indexOf(d);
+    if(dayIdx>=0) dayRows.push({i, dayIdx, r});
+  });
 
+  tjeeHeaderRows.forEach((hr, blockIdx)=>{
+    // Find which day this block belongs to
+    let blockDay = null;
+    for(let di=dayList.length-1; di>=0; di--){
+      const dayStart = rows.findIndex((r,i)=>{
+        const d=parseDate((r[0]||'').trim());
+        return d===dayList[di];
+      });
+      if(dayStart>=0 && dayStart<=hr){ blockDay=dayList[di]; break; }
+    }
+    if(!blockDay) return;
 
-def main():
-    if not os.path.exists(XLSX):
-        print(f"ERROR: {XLSX} not found", file=sys.stderr)
-        sys.exit(1)
-    if not os.path.exists(TEMPLATE):
-        print(f"ERROR: {TEMPLATE} not found", file=sys.stderr)
-        sys.exit(1)
+    // Is this the first or second TJEE block for this day?
+    const dayTjeeBlocks = tjeeHeaderRows.filter(h=>{
+      for(let di=dayList.length-1;di>=0;di--){
+        const ds=rows.findIndex((r,i)=>parseDate((r[0]||'').trim())===dayList[di]);
+        if(ds>=0&&ds<=h){ return dayList[di]===blockDay; }
+      }
+      return false;
+    });
+    const periodoIdx = dayTjeeBlocks.indexOf(hr);
+    const periodo = periodoIdx===0?'Manhã':'Tarde';
 
-    print(f"Reading {XLSX}...")
-    wb = openpyxl.load_workbook(XLSX, data_only=True)
-    ws = wb["ESCALA SEMANAL"]
+    if(!EE[blockDay]) EE[blockDay]=[];
+    TJEE_COLS.forEach(c=>{
+      const medico = (rows[hr+2]?.[c]||'').trim()||null;
+      if(!medico) return;
+      const horario = (rows[hr+3]?.[c]||'').trim().replace(/^(\d{2}:\d{2}):\d{2}$/,'$1')||'';
+      const nexames = (rows[hr+4]?.[c]||'').trim()||'';
+      const ane = (rows[hr+5]?.[c]||'').trim()||null;
+      EE[blockDay].push({
+        sala: tjeeNames?.[c]||`TJEE${c}`,
+        periodo,
+        medico,
+        horario,
+        nexames,
+        ane: (ane&&isAneSigla(ane))?ane:null
+      });
+    });
+  });
 
-    # Find day starts
-    day_starts = {}
-    for r in range(1, ws.max_row + 1):
-        v = ws.cell(r, 1).value
-        if isinstance(v, datetime.datetime):
-            d = v.strftime("%Y-%m-%d")
-            if d not in day_starts:
-                day_starts[d] = r
+  // Sunday prevention (no day row — check for PREV rows after last day)
+  const lastDay = dayList[dayList.length-1];
+  const lastDayRowIdx = rows.findIndex(r=>parseDate((r[0]||'').trim())===lastDay);
+  for(let i=lastDayRowIdx+1;i<rows.length;i++){
+    if((rows[i][28]||'').trim()==='PREVENÇÃO'){
+      const sig=(rows[i+2]?.[28]||'').trim();
+      if(isAneSigla(sig)){
+        const ld=new Date(lastDay+'T12:00:00');
+        ld.setDate(ld.getDate()+1);
+        const sunday=ld.toISOString().slice(0,10);
+        PREV[sunday]=sig;
+      }
+      break;
+    }
+  }
 
-    print(f"Found days: {sorted(day_starts.keys())}")
+  return {DATA, EE, PREV};
+}
 
-    data = parse_bloco(ws, day_starts)
-    ee = parse_ee(ws, day_starts)
-    prev = parse_prev(ws, day_starts)
+// ── LOADING STATE ───────────────────────────────────────────────────────────
+let DATA={}, EE={}, PREV={};
+let dataLoaded=false;
 
-    print(f"PREV: {prev}")
+function showLoading(){
+  const main=document.getElementById('main');
+  if(main) main.innerHTML='<div class="empty-msg" style="padding-top:60px">A carregar escala...<br><span style="font-size:11px;color:var(--muted)">A ler Google Sheets</span></div>';
+}
+function showError(msg){
+  const main=document.getElementById('main');
+  if(main) main.innerHTML=`<div class="empty-msg" style="padding-top:60px;color:var(--red)">${msg}</div>`;
+}
 
-    # Read template
-    with open(TEMPLATE, "r", encoding="utf-8") as f:
-        template = f.read()
+async function loadData(){
+  try{
+    showLoading();
+    const res = await fetch(TSV_URL, {cache:'no-store'});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    const parsed = parseTSV(text);
+    DATA = parsed.DATA;
+    EE = parsed.EE;
+    PREV = parsed.PREV;
+    dataLoaded = true;
+    render();
+  } catch(e){
+    showError('Erro ao carregar a escala.\n'+e.message);
+  }
+}
 
-    # Inject data
-    output = template
-    output = output.replace("%%DATA%%", f"const DATA={json.dumps(data, ensure_ascii=False)};")
-    output = output.replace("%%EE%%", f"const EE={json.dumps(ee, ensure_ascii=False)};")
-    output = output.replace("%%PREV%%", f"const PREV={json.dumps(prev, ensure_ascii=False)};")
+const ALL_SIGLAS=["ACS","AF","AP","ARC","CA","CB","CC","CP","DC","DH","DM","DS","EB","HS","JB","JD","LR","MG","MJ","ML","MM","MSM","MV","PP","RSB","SR","TC","TN","VB","ZCN"];
+const DAYS=[...new Set([...Object.keys(DATA),...Object.keys(PREV)])].sort();
+const TODAY=new Date().toISOString().slice(0,10);
+const DPT=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const MPT=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
-    with open(OUTPUT, "w", encoding="utf-8") as f:
-        f.write(output)
+const BLOCO=['Sala 1','Sala 2','Sala 3','Sala 4','Sala 5','Sala 6','Sala 7','Sala 8','Sala 9','Sala 10','Angio Piso 0','Angio Piso 1','Imagiologia'];
+const ESPECIAIS=['TJEE 1,02','TJEE1,03','TJEE1,04','TJEE1,05','TJEE1,06','TJEE1,07','TJEE1,08','TJEE1,09'];
+const CONSULTA=['Consulta'];
 
-    print(f"Written {OUTPUT} ({len(output):,} bytes)")
+let ME=localStorage.getItem('sigla')||null;
+let activeTab='meus';
+let equipaDay=DAYS.includes(TODAY)?TODAY:DAYS[0];
 
+// ── UTILS ──
+function toM(t){const[h,m]=t.split(':').map(Number);return h*60+m;}
+function nowM(){const n=new Date();return n.getHours()*60+n.getMinutes();}
+function isCur(s,d){if(d!==TODAY)return false;const n=nowM();return n>=toM(s.start)&&n<=toM(s.end)+29;}
+function fmtD(d){const dt=new Date(d+'T12:00:00');return`${DPT[dt.getDay()]} ${dt.getDate()}`;}
+function fmtDLong(d){const dt=new Date(d+'T12:00:00');return`${DPT[dt.getDay()]} ${dt.getDate()} ${MPT[dt.getMonth()]}`;}
+function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1).toLowerCase():'';}
 
-if __name__ == "__main__":
-    main()
+// ── ONBOARDING ──
+function buildOnboarding(){
+  const grid=document.getElementById('sigla-grid');
+  ALL_SIGLAS.forEach(s=>{
+    const b=document.createElement('button');b.className='sigla-btn';b.textContent=s;
+    b.onclick=()=>{grid.querySelectorAll('.sigla-btn').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');document.getElementById('ob-confirm').classList.add('ready');};
+    grid.appendChild(b);
+  });
+}
+function confirmSigla(){
+  const sel=document.querySelector('.sigla-btn.sel');if(!sel)return;
+  ME=sel.textContent;localStorage.setItem('sigla',ME);
+  document.getElementById('onboarding').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('sigla-display').textContent=ME;
+  loadData();scheduleNotification();
+}
+function changeSigla(){
+  document.getElementById('onboarding').classList.remove('hidden');
+  document.getElementById('app').classList.add('hidden');
+  setTimeout(()=>{document.querySelectorAll('.sigla-btn').forEach(b=>{b.classList.toggle('sel',b.textContent===ME);});document.getElementById('ob-confirm').classList.add('ready');},50);
+}
+
+// ── CLOCK ──
+function tickClock(){const n=new Date();document.getElementById('clock').textContent=`${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;}
+
+// ── MEUS TURNOS ──
+function getMyShifts(){
+  const s=[];
+  DAYS.forEach(d=>{
+    const dd=DATA[d];if(!dd)return;
+    Object.entries(dd).forEach(([sala,slots])=>{slots.forEach(slot=>{if(slot.ane===ME)s.push({d,sala,...slot});});});
+    if(PREV[d]===ME) s.push({d,sala:'Prevenção',start:'',end:'',cir:null,ane:ME,isPrev:true});
+  });
+  return s.sort((a,b)=>a.d.localeCompare(b.d)||a.start.localeCompare(b.start));
+}
+function getNextShift(shifts){
+  const n=nowM();
+  const cur=shifts.find(s=>s.d===TODAY&&n>=toM(s.start)&&n<=toM(s.end)+29);if(cur)return{...cur,status:'now'};
+  const nt=shifts.find(s=>s.d===TODAY&&toM(s.start)>n);if(nt)return{...nt,status:'next'};
+  const f=shifts.find(s=>s.d>TODAY);if(f)return{...f,status:'future'};
+  return null;
+}
+function renderMeusTurnos(){
+  const frag=document.createDocumentFragment();
+  const shifts=getMyShifts();const next=getNextShift(shifts);
+  if(next){
+    const h=document.createElement('div');h.className='next-card'+(next.status==='now'?' on-now':'');
+    const lbl=next.status==='now'?'● Em serviço agora':next.status==='next'?'Próximo turno hoje':'Próximo turno';
+    h.innerHTML=`<div class="next-label">${lbl}</div><div class="next-time">${next.start}–${next.end}</div><div class="next-meta">${next.d===TODAY?'Hoje':fmtD(next.d)} · ${next.sala}</div>${next.cir?`<div class="next-partner">Cirurgião: <strong>${next.cir}</strong></div>`:''}`;
+    frag.appendChild(h);
+  }
+  const byDay={};shifts.forEach(s=>{if(!byDay[s.d])byDay[s.d]=[];byDay[s.d].push(s);});
+  Object.entries(byDay).forEach(([d,ss])=>{
+    const hdr=document.createElement('div');hdr.className='section-hdr';hdr.textContent=d===TODAY?`Hoje — ${fmtDLong(d)}`:fmtDLong(d);frag.appendChild(hdr);
+    ss.forEach(s=>{
+      const cur=isCur(s,s.d);
+      const c=document.createElement('div');c.className='turno-card fade-in'+(cur?' active-now':'');
+      c.innerHTML=`<div class="turno-row"><div class="turno-bar${cur?' now':''}"></div><div class="turno-info"><div class="turno-time">${s.start}–${s.end}</div><div class="turno-sala">${s.sala}</div><div class="turno-cir">${s.cir?`Cirurgião: <strong>${s.cir}</strong>`:'<em style="color:var(--faint)">Sem cirurgião</em>'}</div></div></div>`;
+      frag.appendChild(c);
+    });
+  });
+  if(!shifts.length){const e=document.createElement('div');e.className='empty-msg';e.innerHTML=`Sem turnos para <strong>${ME}</strong> esta semana.`;frag.appendChild(e);}
+  return frag;
+}
+
+// ── SALAS AGORA ──
+function renderSalasAgora(){
+  const frag=document.createDocumentFragment();
+  const n=nowM();const dd=DATA[TODAY];
+  const hdr=document.createElement('div');hdr.className='section-hdr';const dt=new Date();hdr.textContent=`Agora · ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;frag.appendChild(hdr);
+  if(!dd){const e=document.createElement('div');e.className='empty-msg';e.textContent='Sem dados para hoje.';frag.appendChild(e);return frag;}
+  const grid=document.createElement('div');grid.className='agora-grid';let count=0;
+  [...BLOCO,...ESPECIAIS].filter(sala=>dd[sala]).forEach(sala=>{
+    const active=dd[sala].filter(s=>n>=toM(s.start)&&n<=toM(s.end)+29);
+    if(!active.length)return;count++;
+    active.forEach(s=>{
+      const isMe=s.ane===ME;
+      const c=document.createElement('div');c.className='agora-card fade-in';c.style.borderColor=isMe?'rgba(16,185,129,0.5)':'';
+      c.innerHTML=`<div class="agora-head"><span class="agora-sala">${sala}${isMe?' <span style="color:var(--green);font-size:11px">● eu</span>':''}</span><span class="agora-time">${s.start}–${s.end}</span></div><div class="agora-body">${s.cir?`<div class="agora-person cir">${s.cir}</div>`:''}<div class="agora-person ane${isMe?' me':''}">Anest: ${s.ane||'—'}</div></div>`;
+      grid.appendChild(c);
+    });
+  });
+  if(!count){const e=document.createElement('div');e.className='empty-msg';e.textContent='Nenhuma sala activa agora.';grid.appendChild(e);}
+  frag.appendChild(grid);return frag;
+}
+
+// ── GRELHA EQUIPA ──
+function periodoLabel(start){
+  const h=parseInt(start.split(':')[0],10);
+  return h<13?'Manhã':'Tarde';
+}
+
+function mkCellSlots(slots, type, isConsulta){
+  if(!slots||!slots.length) return '<td class="col-'+type+' empty-cell"></td>';
+  let html='<td class="col-'+type+'"><div class="cell-slots">';
+  slots.forEach(s=>{
+    const val = type==='cir' ? s.cir : s.ane;
+    const timeLabel = isConsulta ? periodoLabel(s.start) : s.start+'–'+s.end;
+    if(!val){html+=`<div class="cell-slot"><span class="slot-name" style="color:var(--faint)">—</span><div class="slot-t">${timeLabel}</div></div>`;return;}
+    const isMe = type==='ane' && val===ME;
+    html+=`<div class="cell-slot"><span class="slot-name${type==='ane'?' ane-name':''}${isMe?' is-me':''}">${val}</span><div class="slot-t">${timeLabel}</div></div>`;
+  });
+  html+='</div></td>';
+  return html;
+}
+
+function buildEECell(slots, type){
+  // slots = EE entries for one sala+periodo combo
+  if(!slots||!slots.length) return '<td class="empty-cell"></td>';
+  let html='<td class="col-'+type+'"><div class="cell-slots">';
+  slots.forEach(s=>{
+    if(type==='cir'){
+      html+=`<div class="cell-slot"><span class="slot-name">${s.medico}</span><div class="slot-t">${s.horario||s.periodo} · ${s.nexames}</div></div>`;
+    } else {
+      const isMe=s.ane===ME;
+      const val=s.ane||'—';
+      html+=`<div class="cell-slot"><span class="slot-name ane-name${isMe?' is-me':''}">${val}</span><div class="slot-t">${s.periodo}</div></div>`;
+    }
+  });
+  html+='</div></td>';
+  return html;
+}
+
+function buildGrelha(d){
+  const dd=DATA[d]||{};
+  const ee=EE[d]||[];
+  const wrap=document.createElement('div');wrap.className='grelha-wrap';
+  let html='<table class="grelha"><thead><tr><th class="posto-hdr">Posto</th><th class="col-cir">Cirurgião</th><th class="col-ane">Anestesista</th></tr></thead><tbody>';
+
+  // BLOCO section — only show if there's any activity
+  const blocoAtivo=BLOCO.some(sala=>dd[sala]&&dd[sala].length);
+  if(blocoAtivo){
+    html+='<tr class="section-sep"><td colspan="3">Bloco Operatório</td></tr>';
+    BLOCO.forEach(sala=>{
+      const slots=dd[sala];
+      const isSpecial=sala.startsWith('Angio')||sala==='Imagiologia';
+      if(!slots||!slots.length){
+        html+=`<tr><td class="posto-cell${isSpecial?' special':''}">${sala}</td><td class="empty-cell"></td><td class="empty-cell"></td></tr>`;
+        return;
+      }
+      html+=`<tr><td class="posto-cell${isSpecial?' special':''}">${sala}</td>${mkCellSlots(slots,'cir',false)}${mkCellSlots(slots,'ane',false)}</tr>`;
+    });
+  }
+
+  // PREVENÇÃO row
+  html+='<tr class="section-sep" style="border-top-color:var(--purple)"><td colspan="3" style="color:var(--purple)">Prevenção · 21h00</td></tr>';
+  html+='<tr><td class="posto-cell" style="color:var(--purple)">ANE Prevenção</td>';
+  const prevAne=PREV[d]||null;
+  const prevIsMe=prevAne===ME;
+  html+=`<td class="empty-cell"></td><td class="col-ane"><div class="cell-slots"><div class="cell-slot"><span class="slot-name ane-name${prevIsMe?' is-me':''}">${prevAne||'—'}</span></div></div></td></tr>`;
+
+  // EXAMES ESPECIAIS section — rows = TJEE sala, cols = CIR(médico) | ANE, split manhã/tarde
+  const eeSalas=[...new Set(ee.map(e=>e.sala))].sort();
+  if(eeSalas.length){
+    html+='<tr class="section-sep"><td colspan="3">Exames Especiais</td></tr>';
+    // Two sub-header rows: Manhã | Tarde, each with CIR+ANE
+    html+='<tr><th class="posto-hdr"></th><th class="col-cir" style="font-size:10px;color:var(--muted);text-align:center">Médico · Manhã / Tarde</th><th class="col-ane" style="font-size:10px;color:var(--cyan);text-align:center">Anest · Manhã / Tarde</th></tr>';
+    eeSalas.forEach(sala=>{
+      const manha=ee.filter(e=>e.sala===sala&&e.periodo==='Manhã');
+      const tarde=ee.filter(e=>e.sala===sala&&e.periodo==='Tarde');
+      const allSlots=[...manha,...tarde];
+      html+=`<tr><td class="posto-cell special">${sala}</td>${buildEECell(allSlots,'cir')}${buildEECell(allSlots,'ane')}</tr>`;
+    });
+  }
+
+  // CONSULTA section
+  const consulta=dd['Consulta'];
+  if(consulta&&consulta.length){
+    html+='<tr class="section-sep"><td colspan="3">Consulta</td></tr>';
+    html+=`<tr><td class="posto-cell">Consulta</td>${mkCellSlots(consulta,'cir',true)}${mkCellSlots(consulta,'ane',true)}</tr>`;
+  }
+
+  html+='</tbody></table>';
+  wrap.innerHTML=html;
+  return wrap;
+}
+
+function renderEquipa(){
+  const frag=document.createDocumentFragment();
+
+  // Day tabs
+  const tabs=document.createElement('div');tabs.className='day-tabs';
+  DAYS.forEach(d=>{
+    const isT=d===TODAY;
+    const dt=new Date(d+'T12:00:00');
+    const lbl=isT?'Hoje':`${DPT[dt.getDay()]} ${dt.getDate()}`;
+    const t=document.createElement('button');
+    t.className='day-tab'+(isT?' today':'')+(d===equipaDay?' active':'');
+    t.textContent=lbl;
+    t.onclick=()=>{equipaDay=d;renderEquipa&&render();};
+    tabs.appendChild(t);
+  });
+  frag.appendChild(tabs);
+
+  // Date label
+  const lbl=document.createElement('div');lbl.className='section-hdr';lbl.textContent=fmtDLong(equipaDay);frag.appendChild(lbl);
+
+  // Grid
+  frag.appendChild(buildGrelha(equipaDay));
+  return frag;
+}
+
+// ── NOTIFICATIONS ──
+function scheduleNotification(){
+  if(!('Notification' in window)||!ME)return;
+  if(Notification.permission==='default'){Notification.requestPermission();return;}
+  if(Notification.permission!=='granted')return;
+  const shifts=getMyShifts();const n=nowM();
+  const soon=shifts.find(s=>s.d===TODAY&&toM(s.start)>n&&toM(s.start)-n<=30);
+  if(!soon)return;
+  const mins=toM(soon.start)-n;
+  setTimeout(()=>new Notification(`Turno em ${mins} min`,{body:`${soon.sala} · ${soon.start}–${soon.end}${soon.cir?' · '+soon.cir:''}`}),(mins-5)*60*1000);
+}
+
+// ── TABS ──
+function switchTab(t){
+  activeTab=t;
+  ['meus','agora','equipa'].forEach(id=>document.getElementById('tab-'+id).classList.toggle('active',id===t));
+  render();
+}
+
+// ── RENDER ──
+function render(){
+  const main=document.getElementById('main');main.innerHTML='';
+  if(activeTab==='meus')main.appendChild(renderMeusTurnos());
+  else if(activeTab==='agora')main.appendChild(renderSalasAgora());
+  else main.appendChild(renderEquipa());
+}
+
+// ── INIT ──
+buildOnboarding();tickClock();setInterval(tickClock,30000);setInterval(()=>{if(activeTab!=='equipa')render();},60000);
+setInterval(()=>{if(dataLoaded)loadData();},300000);
+if(ME){document.getElementById('onboarding').classList.add('hidden');document.getElementById('app').classList.remove('hidden');document.getElementById('sigla-display').textContent=ME;loadData();scheduleNotification();}
+</script>
+</body>
+</html>
