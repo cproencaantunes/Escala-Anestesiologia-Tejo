@@ -192,7 +192,6 @@ function showError(msg){
 
 async function loadData(){
   try{
-    showLoading();
     const res = await fetch(APPS_SCRIPT_URL, {cache:'no-store'});
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
@@ -203,8 +202,7 @@ async function loadData(){
     dataLoaded = true;
     const days=getDays();
     if(!equipaDay||!days.includes(equipaDay)) equipaDay=days.includes(TODAY)?TODAY:(days[0]||TODAY);
-    updateSiglaGrid();
-    render();
+    if(ME) render();
   } catch(e){
     showError('Erro ao carregar a escala.\n'+e.message);
   }
@@ -275,7 +273,8 @@ function confirmSigla(){
   document.getElementById('onboarding').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('sigla-display').textContent=ME;
-  loadData();scheduleNotification();
+  scheduleNotification();
+  render();
 }
 function changeSigla(){
   document.getElementById('onboarding').classList.remove('hidden');
@@ -490,9 +489,28 @@ function render(){
 }
 
 // ── INIT ──
-buildOnboarding();tickClock();setInterval(tickClock,30000);setInterval(()=>{if(dataLoaded)render();},60000);
-setInterval(()=>{if(dataLoaded)loadData();},300000);
-if(ME){document.getElementById('onboarding').classList.add('hidden');document.getElementById('app').classList.remove('hidden');document.getElementById('sigla-display').textContent=ME;loadData();scheduleNotification();}
+tickClock();
+setInterval(tickClock, 30000);
+setInterval(()=>{ if(dataLoaded) render(); }, 60000);
+setInterval(()=>{ if(dataLoaded) loadData(); }, 300000);
+
+// Always load data first, then decide what to show
+(async function(){
+  // Show loading spinner immediately
+  document.getElementById('onboarding').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  if(ME) document.getElementById('sigla-display').textContent = ME;
+  showLoading();
+  await loadData();
+  // After data loaded, show onboarding if no sigla yet
+  if(!ME){
+    document.getElementById('onboarding').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+    buildOnboarding();
+  } else {
+    scheduleNotification();
+  }
+})();
 </script>
 </body>
 </html>
