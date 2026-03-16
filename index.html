@@ -6,6 +6,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0a0f1e">
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-title" content="Escala HTJO">
 <title>Escala HTJO</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -416,6 +418,14 @@ setInterval(()=>{if(dataLoaded)loadData().then(()=>{if(ME)render();});},300000);
     }).catch(()=>{});
   }
 })();
+
+// ── SERVICE WORKER ─────────────────────────────────────────
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js')
+      .catch(err => console.log('SW error:', err));
+  });
+}
 </script>
 </body>
 </html>
