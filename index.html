@@ -141,11 +141,15 @@ function fmtDLong(d){const dt=new Date(d+'T12:00:00');return DPT[dt.getDay()]+' 
 async function loadData(){
   try{
     const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),15000);
-    const res=await fetch(APPS_SCRIPT_URL+'&t='+Date.now(),{signal:controller.signal});
+    const timer=setTimeout(()=>controller.abort(),20000);
+    const url=APPS_SCRIPT_URL+(APPS_SCRIPT_URL.includes('?')?'&':'?')+'t='+Date.now();
+    const res=await fetch(url,{signal:controller.signal,redirect:'follow'});
     clearTimeout(timer);
     if(!res.ok)throw new Error('HTTP '+res.status);
-    const json=await res.json();
+    const text=await res.text();
+    let json;
+    try{ json=JSON.parse(text); }
+    catch(e){ throw new Error('JSON inválido: '+text.slice(0,100)); }
     if(json.error)throw new Error(json.error);
     DATA=json.DATA||{};
     EE=json.EE||{};
@@ -401,8 +405,7 @@ setInterval(()=>{if(dataLoaded)loadData().then(()=>{if(ME)render();});},300000);
     const ok=await loadData();
     if(ok){scheduleNotification();render();}
     else{
-      // Show static siglas so user can at least navigate
-      document.getElementById('main').innerHTML='<div class="empty-msg" style="padding-top:60px;color:var(--red)">Erro ao carregar.<br>Verifica a ligação e recarrega.</div>';
+      document.getElementById('main').innerHTML='<div class="empty-msg" style="padding-top:60px;color:var(--red)">Erro ao carregar dados.<br><small style="font-size:10px;color:var(--muted)">Tenta recarregar a página</small><br><br><button onclick="location.reload()" style="background:var(--accent);border:none;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer">Recarregar</button></div>';
     }
   }else{
     // Show static siglas immediately — always works even without network
