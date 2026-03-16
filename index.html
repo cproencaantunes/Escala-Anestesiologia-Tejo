@@ -158,8 +158,7 @@ td.col-ane .slot-name.is-me{background:rgba(16,185,129,0.1);border-radius:4px;pa
     </div>
     <div class="nav">
       <div class="nav-tab active" id="tab-meus" onclick="switchTab('meus')">Os meus turnos</div>
-      <div class="nav-tab" id="tab-agora" onclick="switchTab('agora')">Salas agora</div>
-      <div class="nav-tab" id="tab-equipa" onclick="switchTab('equipa')">Equipa</div>
+      <div class="nav-tab" id="tab-equipa" onclick="switchTab('equipa')">Grelha da semana</div>
     </div>
   </div>
   <div class="main" id="main"></div>
@@ -479,7 +478,7 @@ function scheduleNotification(){
 // ── TABS ──
 function switchTab(t){
   activeTab=t;
-  ['meus','agora','equipa'].forEach(id=>document.getElementById('tab-'+id).classList.toggle('active',id===t));
+  ['meus','equipa'].forEach(id=>document.getElementById('tab-'+id).classList.toggle('active',id===t));
   render();
 }
 
@@ -487,12 +486,11 @@ function switchTab(t){
 function render(){
   const main=document.getElementById('main');main.innerHTML='';
   if(activeTab==='meus')main.appendChild(renderMeusTurnos());
-  else if(activeTab==='agora')main.appendChild(renderSalasAgora());
   else main.appendChild(renderEquipa());
 }
 
 // ── INIT ──
-buildOnboarding();tickClock();setInterval(tickClock,30000);setInterval(()=>{if(activeTab!=='equipa')render();},60000);
+buildOnboarding();tickClock();setInterval(tickClock,30000);setInterval(()=>{if(dataLoaded)render();},60000);
 setInterval(()=>{if(dataLoaded)loadData();},300000);
 if(ME){document.getElementById('onboarding').classList.add('hidden');document.getElementById('app').classList.remove('hidden');document.getElementById('sigla-display').textContent=ME;loadData();scheduleNotification();}
 </script>
