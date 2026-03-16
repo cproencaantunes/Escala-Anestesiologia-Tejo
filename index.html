@@ -202,14 +202,17 @@ async function loadData(){
     EE = json.EE;
     PREV = json.PREV;
     dataLoaded = true;
+    const days=getDays();
+    if(!equipaDay||!days.includes(equipaDay)) equipaDay=days.includes(TODAY)?TODAY:(days[0]||TODAY);
+    updateSiglaGrid();
     render();
   } catch(e){
     showError('Erro ao carregar a escala.\n'+e.message);
   }
 }
 
-const ALL_SIGLAS=["ACS","AF","AP","ARC","CA","CB","CC","CP","DC","DH","DM","DS","EB","HS","JB","JD","LR","MG","MJ","ML","MM","MSM","MV","PP","RSB","SR","TC","TN","VB","ZCN"];
-const DAYS=[...new Set([...Object.keys(DATA),...Object.keys(PREV)])].sort();
+const ALL_SIGLAS=["AC","ACS","AF","ALS","AP","ARC","CA","CA","CB","CC","CG","CLR","CP","CR","DC","DH","DM","DS","EB","FFD","HS","IN","IO","JB","JD","JN","LM","LR","LSS","MF","MG","MJ","ML","MM","MR","MSM","MV","PP","RSB","SR","TC","TN","VB","VB","ZCN"];
+function getDays(){return[...new Set([...Object.keys(DATA),...Object.keys(PREV)])].sort();}
 const TODAY=new Date().toISOString().slice(0,10);
 const DPT=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MPT=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -220,7 +223,7 @@ const CONSULTA=['Consulta'];
 
 let ME=localStorage.getItem('sigla')||null;
 let activeTab='meus';
-let equipaDay=DAYS.includes(TODAY)?TODAY:DAYS[0];
+let equipaDay=getDays().includes(TODAY)?TODAY:DAYS[0];
 
 // ── UTILS ──
 function toM(t){const[h,m]=t.split(':').map(Number);return h*60+m;}
@@ -231,13 +234,41 @@ function fmtDLong(d){const dt=new Date(d+'T12:00:00');return`${DPT[dt.getDay()]}
 function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1).toLowerCase():'';}
 
 // ── ONBOARDING ──
-function buildOnboarding(){
-  const grid=document.getElementById('sigla-grid');
-  ALL_SIGLAS.forEach(s=>{
+function getSiglasFromData(){
+  const siglas=new Set();
+  Object.values(DATA).forEach(dd=>{
+    Object.values(dd).forEach(slots=>{
+      slots.forEach(s=>{if(s.ane)siglas.add(s.ane);});
+    });
+  });
+  Object.values(PREV).forEach(s=>{if(s)siglas.add(s);});
+  // Also include EE ane siglas
+  Object.values(EE).forEach(arr=>{
+    arr.forEach(s=>{if(s.ane)siglas.add(s.ane);});
+  });
+  return [...siglas].sort();
+}
+
+function buildSiglaButtons(grid, siglas){
+  grid.innerHTML='';
+  siglas.forEach(s=>{
     const b=document.createElement('button');b.className='sigla-btn';b.textContent=s;
+    if(s===ME) b.classList.add('sel');
     b.onclick=()=>{grid.querySelectorAll('.sigla-btn').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');document.getElementById('ob-confirm').classList.add('ready');};
     grid.appendChild(b);
   });
+}
+
+function updateSiglaGrid(){
+  const grid=document.getElementById('sigla-grid');
+  const siglas=getSiglasFromData();
+  if(siglas.length>0) buildSiglaButtons(grid, siglas);
+}
+
+function buildOnboarding(){
+  const grid=document.getElementById('sigla-grid');
+  // Use static list initially, will be updated after data loads
+  buildSiglaButtons(grid, ALL_SIGLAS);
 }
 function confirmSigla(){
   const sel=document.querySelector('.sigla-btn.sel');if(!sel)return;
@@ -259,7 +290,7 @@ function tickClock(){const n=new Date();document.getElementById('clock').textCon
 // ── MEUS TURNOS ──
 function getMyShifts(){
   const s=[];
-  DAYS.forEach(d=>{
+  getDays().forEach(d=>{
     const dd=DATA[d];if(!dd)return;
     Object.entries(dd).forEach(([sala,slots])=>{slots.forEach(slot=>{if(slot.ane===ME)s.push({d,sala,...slot});});});
     if(PREV[d]===ME) s.push({d,sala:'Prevenção',start:'',end:'',cir:null,ane:ME,isPrev:true});
@@ -413,7 +444,7 @@ function renderEquipa(){
 
   // Day tabs
   const tabs=document.createElement('div');tabs.className='day-tabs';
-  DAYS.forEach(d=>{
+  getDays().forEach(d=>{
     const isT=d===TODAY;
     const dt=new Date(d+'T12:00:00');
     const lbl=isT?'Hoje':`${DPT[dt.getDay()]} ${dt.getDate()}`;
