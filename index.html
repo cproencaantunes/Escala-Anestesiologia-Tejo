@@ -264,8 +264,8 @@ function updateSiglaGrid(){
 
 function buildOnboarding(){
   const grid=document.getElementById('sigla-grid');
-  // Use static list initially, will be updated after data loads
-  buildSiglaButtons(grid, ALL_SIGLAS);
+  const siglas = dataLoaded ? getSiglasFromData() : ALL_SIGLAS;
+  buildSiglaButtons(grid, siglas.length > 0 ? siglas : ALL_SIGLAS);
 }
 function confirmSigla(){
   const sel=document.querySelector('.sigla-btn.sel');if(!sel)return;
@@ -496,19 +496,20 @@ setInterval(()=>{ if(dataLoaded) loadData(); }, 300000);
 
 // Always load data first, then decide what to show
 (async function(){
-  // Show loading spinner immediately
-  document.getElementById('onboarding').classList.add('hidden');
-  document.getElementById('app').classList.remove('hidden');
-  if(ME) document.getElementById('sigla-display').textContent = ME;
-  showLoading();
-  await loadData();
-  // After data loaded, show onboarding if no sigla yet
-  if(!ME){
-    document.getElementById('onboarding').classList.remove('hidden');
-    document.getElementById('app').classList.add('hidden');
-    buildOnboarding();
-  } else {
+  if(ME){
+    // Known user: show app with loading state, then load data
+    document.getElementById('onboarding').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    document.getElementById('sigla-display').textContent = ME;
+    showLoading();
+    await loadData();
     scheduleNotification();
+  } else {
+    // New user: load data silently, then show onboarding with real siglas
+    document.getElementById('ob-sub').textContent = 'A carregar...';
+    await loadData();
+    document.getElementById('ob-sub').textContent = 'Selecciona a tua sigla de anestesista';
+    buildOnboarding();
   }
 })();
 </script>
