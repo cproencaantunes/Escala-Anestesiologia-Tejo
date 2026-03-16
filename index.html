@@ -137,7 +137,6 @@ td.col-ane .slot-name.is-me{background:rgba(16,185,129,0.1);border-radius:4px;pa
 </style>
 </head>
 <body>
-
 <!-- ONBOARDING -->
 <div id="onboarding">
   <div class="ob-title">ESCALA <span>HTJO</span></div>
@@ -163,350 +162,326 @@ td.col-ane .slot-name.is-me{background:rgba(16,185,129,0.1);border-radius:4px;pa
   </div>
   <div class="main" id="main"></div>
 </div>
-
 <script>
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbygE0iktaFlQjMDhLvDcSEzfkdtwt1r52aoerYdLbx2Vu2OeWaNgcakQbVHGyqVZ6dNcw/exec";
 
-// ── TSV PARSER ──────────────────────────────────────────────────────────────
-const SALA_MAP = {
-  "Sala 1":      [2,3],  "Sala 2":      [4,5],  "Sala 3":      [6,7],
-  "Sala 4":      [8,9],  "Sala 5":      [10,11], "Sala 6":      [12,13],
-  "Sala 7":      [14,15],"Sala 8":      [16,17], "Sala 9":      [18,19],
-  "Sala 10":     [20,21],"Angio Piso 0":[22,23], "Angio Piso 1":[24,25],
-  "Imagiologia": [26,27],"Consulta":    [36,null]
-};
-const TJEE_COLS = [28,29,30,31,32,33,34,35];
+// ── STATE ──────────────────────────────────────────────────
+let DATA = {}, EE = {}, PREV = {};
+let dataLoaded = false;
+let ME = localStorage.getItem('sigla') || null;
+let activeTab = 'meus';
+let equipaDay = null;
 
-// ── LOADING STATE ───────────────────────────────────────────────────────────
-let DATA={}, EE={}, PREV={};
-let dataLoaded=false;
+const TODAY = new Date().toISOString().slice(0, 10);
+const DPT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const MPT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const BLOCO = ['Sala 1','Sala 2','Sala 3','Sala 4','Sala 5','Sala 6','Sala 7','Sala 8','Sala 9','Sala 10','Angio Piso 0','Angio Piso 1','Imagiologia'];
 
-function showLoading(){
-  const main=document.getElementById('main');
-  if(main) main.innerHTML='<div class="empty-msg" style="padding-top:60px">A carregar escala...<br><span style="font-size:11px;color:var(--muted)">A ler Google Sheets</span></div>';
+// ── UTILS ──────────────────────────────────────────────────
+function getDays() {
+  return [...new Set([...Object.keys(DATA), ...Object.keys(PREV)])].sort();
 }
-function showError(msg){
-  const main=document.getElementById('main');
-  if(main) main.innerHTML=`<div class="empty-msg" style="padding-top:60px;color:var(--red)">${msg}</div>`;
+function getSiglas() {
+  const s = new Set();
+  Object.values(DATA).forEach(dd => Object.values(dd).forEach(slots => slots.forEach(sl => { if(sl.ane) s.add(sl.ane); })));
+  Object.values(EE).forEach(arr => arr.forEach(sl => { if(sl.ane) s.add(sl.ane); }));
+  Object.values(PREV).forEach(v => { if(v) s.add(v); });
+  return [...s].sort();
 }
+function toM(t) { const [h,m] = t.split(':').map(Number); return h*60+m; }
+function nowM() { const n = new Date(); return n.getHours()*60+n.getMinutes(); }
+function isCur(s, d) { if(d!==TODAY) return false; const n=nowM(); return n>=toM(s.start)&&n<=toM(s.end)+29; }
+function fmtD(d) { const dt=new Date(d+'T12:00:00'); return DPT[dt.getDay()]+' '+dt.getDate(); }
+function fmtDLong(d) { const dt=new Date(d+'T12:00:00'); return DPT[dt.getDay()]+' '+dt.getDate()+' '+MPT[dt.getMonth()]; }
 
-async function loadData(){
-  try{
-    const res = await fetch(APPS_SCRIPT_URL, {cache:'no-store'});
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+// ── LOAD DATA ──────────────────────────────────────────────
+async function loadData() {
+  try {
+    const res = await fetch(APPS_SCRIPT_URL, {cache: 'no-store'});
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
-    if(json.error) throw new Error(json.error);
-    DATA = json.DATA;
-    EE = json.EE;
-    PREV = json.PREV;
+    if (json.error) throw new Error(json.error);
+    DATA = json.DATA || {};
+    EE   = json.EE   || {};
+    PREV = json.PREV || {};
     dataLoaded = true;
-    const days=getDays();
-    if(!equipaDay||!days.includes(equipaDay)) equipaDay=days.includes(TODAY)?TODAY:(days[0]||TODAY);
-    if(ME) render();
-  } catch(e){
-    showError('Erro ao carregar a escala.\n'+e.message);
+    const days = getDays();
+    if (!equipaDay || !days.includes(equipaDay)) {
+      equipaDay = days.includes(TODAY) ? TODAY : (days[0] || TODAY);
+    }
+    return true;
+  } catch(e) {
+    return false;
   }
 }
 
-const ALL_SIGLAS=["AC","ACS","AF","ALS","AP","ARC","CA","CA","CB","CC","CG","CLR","CP","CR","DC","DH","DM","DS","EB","FFD","HS","IN","IO","JB","JD","JN","LM","LR","LSS","MF","MG","MJ","ML","MM","MR","MSM","MV","PP","RSB","SR","TC","TN","VB","VB","ZCN"];
-function getDays(){return[...new Set([...Object.keys(DATA),...Object.keys(PREV)])].sort();}
-const TODAY=new Date().toISOString().slice(0,10);
-const DPT=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-const MPT=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-
-const BLOCO=['Sala 1','Sala 2','Sala 3','Sala 4','Sala 5','Sala 6','Sala 7','Sala 8','Sala 9','Sala 10','Angio Piso 0','Angio Piso 1','Imagiologia'];
-const ESPECIAIS=['TJEE 1,02','TJEE1,03','TJEE1,04','TJEE1,05','TJEE1,06','TJEE1,07','TJEE1,08','TJEE1,09'];
-const CONSULTA=['Consulta'];
-
-let ME=localStorage.getItem('sigla')||null;
-let activeTab='meus';
-let equipaDay=getDays().includes(TODAY)?TODAY:DAYS[0];
-
-// ── UTILS ──
-function toM(t){const[h,m]=t.split(':').map(Number);return h*60+m;}
-function nowM(){const n=new Date();return n.getHours()*60+n.getMinutes();}
-function isCur(s,d){if(d!==TODAY)return false;const n=nowM();return n>=toM(s.start)&&n<=toM(s.end)+29;}
-function fmtD(d){const dt=new Date(d+'T12:00:00');return`${DPT[dt.getDay()]} ${dt.getDate()}`;}
-function fmtDLong(d){const dt=new Date(d+'T12:00:00');return`${DPT[dt.getDay()]} ${dt.getDate()} ${MPT[dt.getMonth()]}`;}
-function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1).toLowerCase():'';}
-
-// ── ONBOARDING ──
-function getSiglasFromData(){
-  const siglas=new Set();
-  Object.values(DATA).forEach(dd=>{
-    Object.values(dd).forEach(slots=>{
-      slots.forEach(s=>{if(s.ane)siglas.add(s.ane);});
-    });
-  });
-  Object.values(PREV).forEach(s=>{if(s)siglas.add(s);});
-  // Also include EE ane siglas
-  Object.values(EE).forEach(arr=>{
-    arr.forEach(s=>{if(s.ane)siglas.add(s.ane);});
-  });
-  return [...siglas].sort();
-}
-
-function buildSiglaButtons(grid, siglas){
-  grid.innerHTML='';
-  siglas.forEach(s=>{
-    const b=document.createElement('button');b.className='sigla-btn';b.textContent=s;
-    if(s===ME) b.classList.add('sel');
-    b.onclick=()=>{grid.querySelectorAll('.sigla-btn').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');document.getElementById('ob-confirm').classList.add('ready');};
+// ── ONBOARDING ─────────────────────────────────────────────
+function buildOnboarding() {
+  const grid = document.getElementById('sigla-grid');
+  grid.innerHTML = '';
+  const siglas = dataLoaded && getSiglas().length > 0 ? getSiglas() : ["ACS","AF","AP","ARC","CA","CB","CC","CP","DC","DH","DM","DS","EB","HS","JB","JD","LR","MG","MJ","ML","MM","MSM","MV","PP","RSB","SR","TC","TN","VB","ZCN"];
+  siglas.forEach(s => {
+    const b = document.createElement('button');
+    b.className = 'sigla-btn' + (s === ME ? ' sel' : '');
+    b.textContent = s;
+    b.onclick = () => {
+      grid.querySelectorAll('.sigla-btn').forEach(x => x.classList.remove('sel'));
+      b.classList.add('sel');
+      document.getElementById('ob-confirm').classList.add('ready');
+    };
     grid.appendChild(b);
   });
+  if (ME) document.getElementById('ob-confirm').classList.add('ready');
 }
-
-function updateSiglaGrid(){
-  const grid=document.getElementById('sigla-grid');
-  const siglas=getSiglasFromData();
-  if(siglas.length>0) buildSiglaButtons(grid, siglas);
-}
-
-function buildOnboarding(){
-  const grid=document.getElementById('sigla-grid');
-  const siglas = dataLoaded ? getSiglasFromData() : ALL_SIGLAS;
-  buildSiglaButtons(grid, siglas.length > 0 ? siglas : ALL_SIGLAS);
-}
-function confirmSigla(){
-  const sel=document.querySelector('.sigla-btn.sel');if(!sel)return;
-  ME=sel.textContent;localStorage.setItem('sigla',ME);
+function confirmSigla() {
+  const sel = document.querySelector('.sigla-btn.sel');
+  if (!sel) return;
+  ME = sel.textContent;
+  localStorage.setItem('sigla', ME);
   document.getElementById('onboarding').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  document.getElementById('sigla-display').textContent=ME;
+  document.getElementById('sigla-display').textContent = ME;
   scheduleNotification();
   render();
 }
-function changeSigla(){
+function changeSigla() {
+  buildOnboarding();
   document.getElementById('onboarding').classList.remove('hidden');
   document.getElementById('app').classList.add('hidden');
-  setTimeout(()=>{document.querySelectorAll('.sigla-btn').forEach(b=>{b.classList.toggle('sel',b.textContent===ME);});document.getElementById('ob-confirm').classList.add('ready');},50);
 }
 
-// ── CLOCK ──
-function tickClock(){const n=new Date();document.getElementById('clock').textContent=`${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;}
+// ── CLOCK ──────────────────────────────────────────────────
+function tickClock() {
+  const n = new Date();
+  document.getElementById('clock').textContent =
+    String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0');
+}
 
-// ── MEUS TURNOS ──
-function getMyShifts(){
-  const s=[];
-  getDays().forEach(d=>{
-    const dd=DATA[d];if(!dd)return;
-    Object.entries(dd).forEach(([sala,slots])=>{slots.forEach(slot=>{if(slot.ane===ME)s.push({d,sala,...slot});});});
-    if(PREV[d]===ME) s.push({d,sala:'Prevenção',start:'',end:'',cir:null,ane:ME,isPrev:true});
+// ── MEUS TURNOS ────────────────────────────────────────────
+function getMyShifts() {
+  const s = [];
+  getDays().forEach(d => {
+    const dd = DATA[d];
+    if (dd) Object.entries(dd).forEach(([sala, slots]) => {
+      slots.forEach(slot => { if (slot.ane === ME) s.push({d, sala, ...slot}); });
+    });
+    if (PREV[d] === ME) s.push({d, sala:'Prevenção', start:'', end:'', cir:null, ane:ME, isPrev:true});
   });
-  return s.sort((a,b)=>a.d.localeCompare(b.d)||a.start.localeCompare(b.start));
+  return s.sort((a,b) => a.d.localeCompare(b.d) || a.start.localeCompare(b.start));
 }
-function getNextShift(shifts){
-  const n=nowM();
-  const cur=shifts.find(s=>s.d===TODAY&&n>=toM(s.start)&&n<=toM(s.end)+29);if(cur)return{...cur,status:'now'};
-  const nt=shifts.find(s=>s.d===TODAY&&toM(s.start)>n);if(nt)return{...nt,status:'next'};
-  const f=shifts.find(s=>s.d>TODAY);if(f)return{...f,status:'future'};
+function getNextShift(shifts) {
+  const n = nowM();
+  const cur = shifts.find(s => s.d===TODAY && s.start && n>=toM(s.start) && n<=toM(s.end)+29);
+  if (cur) return {...cur, status:'now'};
+  const nt = shifts.find(s => s.d===TODAY && s.start && toM(s.start)>n);
+  if (nt) return {...nt, status:'next'};
+  const f = shifts.find(s => s.d > TODAY);
+  if (f) return {...f, status:'future'};
   return null;
 }
-function renderMeusTurnos(){
-  const frag=document.createDocumentFragment();
-  const shifts=getMyShifts();const next=getNextShift(shifts);
-  if(next){
-    const h=document.createElement('div');h.className='next-card'+(next.status==='now'?' on-now':'');
-    const lbl=next.status==='now'?'● Em serviço agora':next.status==='next'?'Próximo turno hoje':'Próximo turno';
-    h.innerHTML=`<div class="next-label">${lbl}</div><div class="next-time">${next.start}–${next.end}</div><div class="next-meta">${next.d===TODAY?'Hoje':fmtD(next.d)} · ${next.sala}</div>${next.cir?`<div class="next-partner">Cirurgião: <strong>${next.cir}</strong></div>`:''}`;
+function renderMeusTurnos() {
+  const frag = document.createDocumentFragment();
+  const shifts = getMyShifts();
+  const next = getNextShift(shifts);
+
+  if (next) {
+    const h = document.createElement('div');
+    h.className = 'next-card' + (next.status==='now' ? ' on-now' : '');
+    const lbl = next.status==='now' ? '● Em serviço agora' : next.status==='next' ? 'Próximo turno hoje' : 'Próximo turno';
+    h.innerHTML = `<div class="next-label">${lbl}</div>
+      <div class="next-time">${next.start && next.end ? next.start+'–'+next.end : 'Prevenção'}</div>
+      <div class="next-meta">${next.d===TODAY?'Hoje':fmtD(next.d)} · ${next.sala}</div>
+      ${next.cir ? `<div class="next-partner">Cirurgião: <strong>${next.cir}</strong></div>` : ''}`;
     frag.appendChild(h);
   }
-  const byDay={};shifts.forEach(s=>{if(!byDay[s.d])byDay[s.d]=[];byDay[s.d].push(s);});
-  Object.entries(byDay).forEach(([d,ss])=>{
-    const hdr=document.createElement('div');hdr.className='section-hdr';hdr.textContent=d===TODAY?`Hoje — ${fmtDLong(d)}`:fmtDLong(d);frag.appendChild(hdr);
-    ss.forEach(s=>{
-      const cur=isCur(s,s.d);
-      const c=document.createElement('div');c.className='turno-card fade-in'+(cur?' active-now':'');
-      c.innerHTML=`<div class="turno-row"><div class="turno-bar${cur?' now':''}"></div><div class="turno-info"><div class="turno-time">${s.start}–${s.end}</div><div class="turno-sala">${s.sala}</div><div class="turno-cir">${s.cir?`Cirurgião: <strong>${s.cir}</strong>`:'<em style="color:var(--faint)">Sem cirurgião</em>'}</div></div></div>`;
-      frag.appendChild(c);
+
+  const byDay = {};
+  shifts.forEach(s => { (byDay[s.d] = byDay[s.d]||[]).push(s); });
+  Object.entries(byDay).forEach(([d, ss]) => {
+    const hdr = document.createElement('div');
+    hdr.className = 'section-hdr';
+    hdr.textContent = d===TODAY ? 'Hoje — '+fmtDLong(d) : fmtDLong(d);
+    frag.appendChild(hdr);
+    ss.forEach(s => {
+      const cur = s.start && isCur(s, s.d);
+      const card = document.createElement('div');
+      card.className = 'turno-card fade-in' + (cur ? ' active-now' : '');
+      card.innerHTML = `<div class="turno-row">
+        <div class="turno-bar${cur?' now':''}"></div>
+        <div class="turno-info">
+          <div class="turno-time">${s.start && s.end ? s.start+'–'+s.end : ''}</div>
+          <div class="turno-sala">${s.sala}</div>
+          <div class="turno-cir">${s.cir ? `Cirurgião: <strong>${s.cir}</strong>` : '<em style="color:var(--faint)">Sem cirurgião</em>'}</div>
+        </div>
+      </div>`;
+      frag.appendChild(card);
     });
   });
-  if(!shifts.length){const e=document.createElement('div');e.className='empty-msg';e.innerHTML=`Sem turnos para <strong>${ME}</strong> esta semana.`;frag.appendChild(e);}
+
+  if (!shifts.length) {
+    const e = document.createElement('div');
+    e.className = 'empty-msg';
+    e.innerHTML = `Sem turnos para <strong>${ME}</strong> esta semana.`;
+    frag.appendChild(e);
+  }
   return frag;
 }
 
-// ── SALAS AGORA ──
-function renderSalasAgora(){
-  const frag=document.createDocumentFragment();
-  const n=nowM();const dd=DATA[TODAY];
-  const hdr=document.createElement('div');hdr.className='section-hdr';const dt=new Date();hdr.textContent=`Agora · ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;frag.appendChild(hdr);
-  if(!dd){const e=document.createElement('div');e.className='empty-msg';e.textContent='Sem dados para hoje.';frag.appendChild(e);return frag;}
-  const grid=document.createElement('div');grid.className='agora-grid';let count=0;
-  [...BLOCO,...ESPECIAIS].filter(sala=>dd[sala]).forEach(sala=>{
-    const active=dd[sala].filter(s=>n>=toM(s.start)&&n<=toM(s.end)+29);
-    if(!active.length)return;count++;
-    active.forEach(s=>{
-      const isMe=s.ane===ME;
-      const c=document.createElement('div');c.className='agora-card fade-in';c.style.borderColor=isMe?'rgba(16,185,129,0.5)':'';
-      c.innerHTML=`<div class="agora-head"><span class="agora-sala">${sala}${isMe?' <span style="color:var(--green);font-size:11px">● eu</span>':''}</span><span class="agora-time">${s.start}–${s.end}</span></div><div class="agora-body">${s.cir?`<div class="agora-person cir">${s.cir}</div>`:''}<div class="agora-person ane${isMe?' me':''}">Anest: ${s.ane||'—'}</div></div>`;
-      grid.appendChild(c);
-    });
-  });
-  if(!count){const e=document.createElement('div');e.className='empty-msg';e.textContent='Nenhuma sala activa agora.';grid.appendChild(e);}
-  frag.appendChild(grid);return frag;
+// ── GRELHA ─────────────────────────────────────────────────
+function periodoLabel(start) {
+  return parseInt((start||'0').split(':')[0], 10) < 13 ? 'Manhã' : 'Tarde';
 }
-
-// ── GRELHA EQUIPA ──
-function periodoLabel(start){
-  const h=parseInt(start.split(':')[0],10);
-  return h<13?'Manhã':'Tarde';
-}
-
-function mkCellSlots(slots, type, isConsulta){
-  if(!slots||!slots.length) return '<td class="col-'+type+' empty-cell"></td>';
-  let html='<td class="col-'+type+'"><div class="cell-slots">';
-  slots.forEach(s=>{
+function mkCellSlots(slots, type, isConsulta) {
+  if (!slots || !slots.length) return '<td class="col-'+type+' empty-cell"></td>';
+  let html = '<td class="col-'+type+'"><div class="cell-slots">';
+  slots.forEach(s => {
     const val = type==='cir' ? s.cir : s.ane;
-    const timeLabel = isConsulta ? periodoLabel(s.start) : s.start+'–'+s.end;
-    if(!val){html+=`<div class="cell-slot"><span class="slot-name" style="color:var(--faint)">—</span><div class="slot-t">${timeLabel}</div></div>`;return;}
+    const timeLabel = isConsulta ? periodoLabel(s.start) : (s.start+'–'+s.end);
+    if (!val) { html += `<div class="cell-slot"><span class="slot-name" style="color:var(--faint)">—</span><div class="slot-t">${timeLabel}</div></div>`; return; }
     const isMe = type==='ane' && val===ME;
-    html+=`<div class="cell-slot"><span class="slot-name${type==='ane'?' ane-name':''}${isMe?' is-me':''}">${val}</span><div class="slot-t">${timeLabel}</div></div>`;
+    html += `<div class="cell-slot"><span class="slot-name${type==='ane'?' ane-name':''}${isMe?' is-me':''}">${val}</span><div class="slot-t">${timeLabel}</div></div>`;
   });
-  html+='</div></td>';
-  return html;
+  return html + '</div></td>';
 }
-
-function buildEECell(slots, type){
-  // slots = EE entries for one sala+periodo combo
-  if(!slots||!slots.length) return '<td class="empty-cell"></td>';
-  let html='<td class="col-'+type+'"><div class="cell-slots">';
-  slots.forEach(s=>{
-    if(type==='cir'){
-      html+=`<div class="cell-slot"><span class="slot-name">${s.medico}</span><div class="slot-t">${s.horario||s.periodo} · ${s.nexames}</div></div>`;
+function buildEECell(slots, type) {
+  if (!slots || !slots.length) return '<td class="empty-cell"></td>';
+  let html = '<td class="col-'+type+'"><div class="cell-slots">';
+  slots.forEach(s => {
+    if (type==='cir') {
+      html += `<div class="cell-slot"><span class="slot-name">${s.medico}</span><div class="slot-t">${s.horario||s.periodo} · ${s.nexames}</div></div>`;
     } else {
-      const isMe=s.ane===ME;
-      const val=s.ane||'—';
-      html+=`<div class="cell-slot"><span class="slot-name ane-name${isMe?' is-me':''}">${val}</span><div class="slot-t">${s.periodo}</div></div>`;
+      const isMe = s.ane===ME;
+      html += `<div class="cell-slot"><span class="slot-name ane-name${isMe?' is-me':''}">${s.ane||'—'}</span><div class="slot-t">${s.periodo}</div></div>`;
     }
   });
-  html+='</div></td>';
-  return html;
+  return html + '</div></td>';
 }
+function buildGrelha(d) {
+  const dd = DATA[d] || {};
+  const ee = EE[d] || [];
+  const wrap = document.createElement('div');
+  wrap.className = 'grelha-wrap';
+  let html = '<table class="grelha"><thead><tr><th class="posto-hdr">Posto</th><th class="col-cir">Cirurgião</th><th class="col-ane">Anestesista</th></tr></thead><tbody>';
 
-function buildGrelha(d){
-  const dd=DATA[d]||{};
-  const ee=EE[d]||[];
-  const wrap=document.createElement('div');wrap.className='grelha-wrap';
-  let html='<table class="grelha"><thead><tr><th class="posto-hdr">Posto</th><th class="col-cir">Cirurgião</th><th class="col-ane">Anestesista</th></tr></thead><tbody>';
-
-  // BLOCO section — only show if there's any activity
-  const blocoAtivo=BLOCO.some(sala=>dd[sala]&&dd[sala].length);
-  if(blocoAtivo){
-    html+='<tr class="section-sep"><td colspan="3">Bloco Operatório</td></tr>';
-    BLOCO.forEach(sala=>{
-      const slots=dd[sala];
-      const isSpecial=sala.startsWith('Angio')||sala==='Imagiologia';
-      if(!slots||!slots.length){
-        html+=`<tr><td class="posto-cell${isSpecial?' special':''}">${sala}</td><td class="empty-cell"></td><td class="empty-cell"></td></tr>`;
-        return;
+  const blocoAtivo = BLOCO.some(sala => dd[sala] && dd[sala].length);
+  if (blocoAtivo) {
+    html += '<tr class="section-sep"><td colspan="3">Bloco Operatório</td></tr>';
+    BLOCO.forEach(sala => {
+      const slots = dd[sala];
+      const isSpecial = sala.startsWith('Angio') || sala==='Imagiologia';
+      if (!slots || !slots.length) {
+        html += `<tr><td class="posto-cell${isSpecial?' special':''}">${sala}</td><td class="empty-cell"></td><td class="empty-cell"></td></tr>`;
+      } else {
+        html += `<tr><td class="posto-cell${isSpecial?' special':''}">${sala}</td>${mkCellSlots(slots,'cir',false)}${mkCellSlots(slots,'ane',false)}</tr>`;
       }
-      html+=`<tr><td class="posto-cell${isSpecial?' special':''}">${sala}</td>${mkCellSlots(slots,'cir',false)}${mkCellSlots(slots,'ane',false)}</tr>`;
     });
   }
 
-  // PREVENÇÃO row
-  html+='<tr class="section-sep" style="border-top-color:var(--purple)"><td colspan="3" style="color:var(--purple)">Prevenção · 21h00</td></tr>';
-  html+='<tr><td class="posto-cell" style="color:var(--purple)">ANE Prevenção</td>';
-  const prevAne=PREV[d]||null;
-  const prevIsMe=prevAne===ME;
-  html+=`<td class="empty-cell"></td><td class="col-ane"><div class="cell-slots"><div class="cell-slot"><span class="slot-name ane-name${prevIsMe?' is-me':''}">${prevAne||'—'}</span></div></div></td></tr>`;
+  // PREVENÇÃO
+  const prevAne = PREV[d] || null;
+  const prevIsMe = prevAne === ME;
+  html += `<tr class="section-sep" style="border-top-color:var(--purple)"><td colspan="3" style="color:var(--purple)">Prevenção</td></tr>`;
+  html += `<tr><td class="posto-cell" style="color:var(--purple)">ANE Prevenção</td><td class="empty-cell"></td><td class="col-ane"><div class="cell-slots"><div class="cell-slot"><span class="slot-name ane-name${prevIsMe?' is-me':''}">${prevAne||'—'}</span></div></div></td></tr>`;
 
-  // EXAMES ESPECIAIS section — rows = TJEE sala, cols = CIR(médico) | ANE, split manhã/tarde
-  const eeSalas=[...new Set(ee.map(e=>e.sala))].sort();
-  if(eeSalas.length){
-    html+='<tr class="section-sep"><td colspan="3">Exames Especiais</td></tr>';
-    // Two sub-header rows: Manhã | Tarde, each with CIR+ANE
-    html+='<tr><th class="posto-hdr"></th><th class="col-cir" style="font-size:10px;color:var(--muted);text-align:center">Médico · Manhã / Tarde</th><th class="col-ane" style="font-size:10px;color:var(--cyan);text-align:center">Anest · Manhã / Tarde</th></tr>';
-    eeSalas.forEach(sala=>{
-      const manha=ee.filter(e=>e.sala===sala&&e.periodo==='Manhã');
-      const tarde=ee.filter(e=>e.sala===sala&&e.periodo==='Tarde');
-      const allSlots=[...manha,...tarde];
-      html+=`<tr><td class="posto-cell special">${sala}</td>${buildEECell(allSlots,'cir')}${buildEECell(allSlots,'ane')}</tr>`;
+  // EXAMES ESPECIAIS
+  const eeSalas = [...new Set(ee.map(e => e.sala))].sort();
+  if (eeSalas.length) {
+    html += '<tr class="section-sep"><td colspan="3">Exames Especiais</td></tr>';
+    eeSalas.forEach(sala => {
+      const allSlots = ee.filter(e => e.sala===sala);
+      html += `<tr><td class="posto-cell special">${sala}</td>${buildEECell(allSlots,'cir')}${buildEECell(allSlots,'ane')}</tr>`;
     });
   }
 
-  // CONSULTA section
-  const consulta=dd['Consulta'];
-  if(consulta&&consulta.length){
-    html+='<tr class="section-sep"><td colspan="3">Consulta</td></tr>';
-    html+=`<tr><td class="posto-cell">Consulta</td>${mkCellSlots(consulta,'cir',true)}${mkCellSlots(consulta,'ane',true)}</tr>`;
+  // CONSULTA
+  const consulta = dd['Consulta'];
+  if (consulta && consulta.length) {
+    html += '<tr class="section-sep"><td colspan="3">Consulta</td></tr>';
+    html += `<tr><td class="posto-cell">Consulta</td>${mkCellSlots(consulta,'cir',true)}${mkCellSlots(consulta,'ane',true)}</tr>`;
   }
 
-  html+='</tbody></table>';
-  wrap.innerHTML=html;
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
   return wrap;
 }
+function renderEquipa() {
+  const frag = document.createDocumentFragment();
+  const days = getDays();
 
-function renderEquipa(){
-  const frag=document.createDocumentFragment();
-
-  // Day tabs
-  const tabs=document.createElement('div');tabs.className='day-tabs';
-  getDays().forEach(d=>{
-    const isT=d===TODAY;
-    const dt=new Date(d+'T12:00:00');
-    const lbl=isT?'Hoje':`${DPT[dt.getDay()]} ${dt.getDate()}`;
-    const t=document.createElement('button');
-    t.className='day-tab'+(isT?' today':'')+(d===equipaDay?' active':'');
-    t.textContent=lbl;
-    t.onclick=()=>{equipaDay=d;renderEquipa&&render();};
+  const tabs = document.createElement('div');
+  tabs.className = 'day-tabs';
+  days.forEach(d => {
+    const isT = d===TODAY;
+    const dt = new Date(d+'T12:00:00');
+    const lbl = isT ? 'Hoje' : DPT[dt.getDay()]+' '+dt.getDate();
+    const t = document.createElement('button');
+    t.className = 'day-tab'+(isT?' today':'')+(d===equipaDay?' active':'');
+    t.textContent = lbl;
+    t.onclick = () => { equipaDay=d; render(); };
     tabs.appendChild(t);
   });
   frag.appendChild(tabs);
 
-  // Date label
-  const lbl=document.createElement('div');lbl.className='section-hdr';lbl.textContent=fmtDLong(equipaDay);frag.appendChild(lbl);
+  const lbl = document.createElement('div');
+  lbl.className = 'section-hdr';
+  lbl.textContent = fmtDLong(equipaDay);
+  frag.appendChild(lbl);
 
-  // Grid
   frag.appendChild(buildGrelha(equipaDay));
   return frag;
 }
 
-// ── NOTIFICATIONS ──
-function scheduleNotification(){
-  if(!('Notification' in window)||!ME)return;
-  if(Notification.permission==='default'){Notification.requestPermission();return;}
-  if(Notification.permission!=='granted')return;
-  const shifts=getMyShifts();const n=nowM();
-  const soon=shifts.find(s=>s.d===TODAY&&toM(s.start)>n&&toM(s.start)-n<=30);
-  if(!soon)return;
-  const mins=toM(soon.start)-n;
-  setTimeout(()=>new Notification(`Turno em ${mins} min`,{body:`${soon.sala} · ${soon.start}–${soon.end}${soon.cir?' · '+soon.cir:''}`}),(mins-5)*60*1000);
-}
-
-// ── TABS ──
-function switchTab(t){
-  activeTab=t;
-  ['meus','equipa'].forEach(id=>document.getElementById('tab-'+id).classList.toggle('active',id===t));
+// ── TABS ───────────────────────────────────────────────────
+function switchTab(t) {
+  activeTab = t;
+  ['meus','equipa'].forEach(id => document.getElementById('tab-'+id).classList.toggle('active', id===t));
   render();
 }
 
-// ── RENDER ──
-function render(){
-  const main=document.getElementById('main');main.innerHTML='';
-  if(activeTab==='meus')main.appendChild(renderMeusTurnos());
+// ── RENDER ─────────────────────────────────────────────────
+function render() {
+  const main = document.getElementById('main');
+  main.innerHTML = '';
+  if (activeTab==='meus') main.appendChild(renderMeusTurnos());
   else main.appendChild(renderEquipa());
 }
 
-// ── INIT ──
+// ── NOTIFICATIONS ──────────────────────────────────────────
+function scheduleNotification() {
+  if (!('Notification' in window) || !ME) return;
+  if (Notification.permission==='default') { Notification.requestPermission(); return; }
+  if (Notification.permission!=='granted') return;
+  const shifts = getMyShifts();
+  const n = nowM();
+  const soon = shifts.find(s => s.d===TODAY && s.start && toM(s.start)>n && toM(s.start)-n<=30);
+  if (!soon) return;
+  const mins = toM(soon.start)-n;
+  setTimeout(() => new Notification(`Turno em ${mins} min`, {body: `${soon.sala} · ${soon.start}–${soon.end}${soon.cir?' · '+soon.cir:''}`}), (mins-5)*60*1000);
+}
+
+// ── INIT ───────────────────────────────────────────────────
 tickClock();
 setInterval(tickClock, 30000);
-setInterval(()=>{ if(dataLoaded) render(); }, 60000);
-setInterval(()=>{ if(dataLoaded) loadData(); }, 300000);
+setInterval(() => { if (dataLoaded) render(); }, 60000);
+setInterval(() => { if (dataLoaded) loadData().then(() => render()); }, 300000);
 
-// Always load data first, then decide what to show
-(async function(){
-  if(ME){
-    // Known user: show app with loading state, then load data
+(async function() {
+  if (ME) {
+    // Returning user — show app with loading message
     document.getElementById('onboarding').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     document.getElementById('sigla-display').textContent = ME;
-    showLoading();
-    await loadData();
-    scheduleNotification();
+    document.getElementById('main').innerHTML = '<div class="empty-msg" style="padding-top:60px">A carregar escala…</div>';
+    const ok = await loadData();
+    if (ok) {
+      scheduleNotification();
+      render();
+    } else {
+      document.getElementById('main').innerHTML = '<div class="empty-msg" style="padding-top:60px;color:var(--red)">Erro ao carregar.<br>Verifica a ligação.</div>';
+    }
   } else {
-    // New user: load data silently, then show onboarding with real siglas
-    document.getElementById('ob-sub').textContent = 'A carregar...';
+    // New user — load data then show onboarding with real siglas
+    document.getElementById('ob-sub').textContent = 'A carregar…';
     await loadData();
     document.getElementById('ob-sub').textContent = 'Selecciona a tua sigla de anestesista';
     buildOnboarding();
