@@ -165,8 +165,7 @@ td.col-ane .slot-name.is-me{background:rgba(16,185,129,0.1);border-radius:4px;pa
 <script>
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwifKdRcu7aEOFollwNCdJpbRKtyc0i-6t251OoQXLCP3a-XDYbqDyouQs7GzTYexX7ZA/exec";
 
-const STATIC_SIGLAS = ["AC","ACS","AF","ALS","AP","ARC","CA","CB","CC","CG","CP","CR","DC","DH","DM","DS","EB","FFD","HS","JB","JD","LM","LR","LSS","MF","MG","MJ","ML","MM","MSM","MV","PP","RSB","SR","TC","TN","VB","ZCN"];
-
+// ── STATE ──────────────────────────────────────────────────
 let DATA = {}, EE = {}, PREV = {};
 let dataLoaded = false;
 let ME = localStorage.getItem('sigla') || null;
@@ -178,6 +177,7 @@ const DPT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MPT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const BLOCO = ['Sala 1','Sala 2','Sala 3','Sala 4','Sala 5','Sala 6','Sala 7','Sala 8','Sala 9','Sala 10','Angio Piso 0','Angio Piso 1','Imagiologia'];
 
+// ── UTILS ──────────────────────────────────────────────────
 function getDays() {
   return [...new Set([...Object.keys(DATA), ...Object.keys(PREV)])].sort();
 }
@@ -194,6 +194,7 @@ function isCur(s, d) { if(d!==TODAY) return false; const n=nowM(); return n>=toM
 function fmtD(d) { const dt=new Date(d+'T12:00:00'); return DPT[dt.getDay()]+' '+dt.getDate(); }
 function fmtDLong(d) { const dt=new Date(d+'T12:00:00'); return DPT[dt.getDay()]+' '+dt.getDate()+' '+MPT[dt.getMonth()]; }
 
+// ── LOAD DATA ──────────────────────────────────────────────
 async function loadData() {
   try {
     const res = await fetch(APPS_SCRIPT_URL, {cache: 'no-store'});
@@ -210,16 +211,15 @@ async function loadData() {
     }
     return true;
   } catch(e) {
-    console.error('loadData error:', e);
     return false;
   }
 }
 
+// ── ONBOARDING ─────────────────────────────────────────────
 function buildOnboarding() {
   const grid = document.getElementById('sigla-grid');
   grid.innerHTML = '';
-  const liveSiglas = dataLoaded ? getSiglas() : [];
-  const siglas = liveSiglas.length > 0 ? liveSiglas : STATIC_SIGLAS;
+  const siglas = dataLoaded && getSiglas().length > 0 ? getSiglas() : ["ACS","AF","AP","ARC","CA","CB","CC","CP","DC","DH","DM","DS","EB","HS","JB","JD","LR","MG","MJ","ML","MM","MSM","MV","PP","RSB","SR","TC","TN","VB","ZCN"];
   siglas.forEach(s => {
     const b = document.createElement('button');
     b.className = 'sigla-btn' + (s === ME ? ' sel' : '');
@@ -233,7 +233,6 @@ function buildOnboarding() {
   });
   if (ME) document.getElementById('ob-confirm').classList.add('ready');
 }
-
 function confirmSigla() {
   const sel = document.querySelector('.sigla-btn.sel');
   if (!sel) return;
@@ -251,12 +250,14 @@ function changeSigla() {
   document.getElementById('app').classList.add('hidden');
 }
 
+// ── CLOCK ──────────────────────────────────────────────────
 function tickClock() {
   const n = new Date();
   document.getElementById('clock').textContent =
     String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0');
 }
 
+// ── MEUS TURNOS ────────────────────────────────────────────
 function getMyShifts() {
   const s = [];
   getDays().forEach(d => {
@@ -282,6 +283,7 @@ function renderMeusTurnos() {
   const frag = document.createDocumentFragment();
   const shifts = getMyShifts();
   const next = getNextShift(shifts);
+
   if (next) {
     const h = document.createElement('div');
     h.className = 'next-card' + (next.status==='now' ? ' on-now' : '');
@@ -292,6 +294,7 @@ function renderMeusTurnos() {
       ${next.cir ? `<div class="next-partner">Cirurgião: <strong>${next.cir}</strong></div>` : ''}`;
     frag.appendChild(h);
   }
+
   const byDay = {};
   shifts.forEach(s => { (byDay[s.d] = byDay[s.d]||[]).push(s); });
   Object.entries(byDay).forEach(([d, ss]) => {
@@ -314,6 +317,7 @@ function renderMeusTurnos() {
       frag.appendChild(card);
     });
   });
+
   if (!shifts.length) {
     const e = document.createElement('div');
     e.className = 'empty-msg';
@@ -323,6 +327,7 @@ function renderMeusTurnos() {
   return frag;
 }
 
+// ── GRELHA ─────────────────────────────────────────────────
 function periodoLabel(start) {
   return parseInt((start||'0').split(':')[0], 10) < 13 ? 'Manhã' : 'Tarde';
 }
@@ -357,6 +362,7 @@ function buildGrelha(d) {
   const wrap = document.createElement('div');
   wrap.className = 'grelha-wrap';
   let html = '<table class="grelha"><thead><tr><th class="posto-hdr">Posto</th><th class="col-cir">Cirurgião</th><th class="col-ane">Anestesista</th></tr></thead><tbody>';
+
   const blocoAtivo = BLOCO.some(sala => dd[sala] && dd[sala].length);
   if (blocoAtivo) {
     html += '<tr class="section-sep"><td colspan="3">Bloco Operatório</td></tr>';
@@ -370,10 +376,14 @@ function buildGrelha(d) {
       }
     });
   }
+
+  // PREVENÇÃO
   const prevAne = PREV[d] || null;
   const prevIsMe = prevAne === ME;
   html += `<tr class="section-sep" style="border-top-color:var(--purple)"><td colspan="3" style="color:var(--purple)">Prevenção</td></tr>`;
   html += `<tr><td class="posto-cell" style="color:var(--purple)">ANE Prevenção</td><td class="empty-cell"></td><td class="col-ane"><div class="cell-slots"><div class="cell-slot"><span class="slot-name ane-name${prevIsMe?' is-me':''}">${prevAne||'—'}</span></div></div></td></tr>`;
+
+  // EXAMES ESPECIAIS
   const eeSalas = [...new Set(ee.map(e => e.sala))].sort();
   if (eeSalas.length) {
     html += '<tr class="section-sep"><td colspan="3">Exames Especiais</td></tr>';
@@ -382,11 +392,14 @@ function buildGrelha(d) {
       html += `<tr><td class="posto-cell special">${sala}</td>${buildEECell(allSlots,'cir')}${buildEECell(allSlots,'ane')}</tr>`;
     });
   }
+
+  // CONSULTA
   const consulta = dd['Consulta'];
   if (consulta && consulta.length) {
     html += '<tr class="section-sep"><td colspan="3">Consulta</td></tr>';
     html += `<tr><td class="posto-cell">Consulta</td>${mkCellSlots(consulta,'cir',true)}${mkCellSlots(consulta,'ane',true)}</tr>`;
   }
+
   html += '</tbody></table>';
   wrap.innerHTML = html;
   return wrap;
@@ -394,6 +407,7 @@ function buildGrelha(d) {
 function renderEquipa() {
   const frag = document.createDocumentFragment();
   const days = getDays();
+
   const tabs = document.createElement('div');
   tabs.className = 'day-tabs';
   days.forEach(d => {
@@ -407,24 +421,32 @@ function renderEquipa() {
     tabs.appendChild(t);
   });
   frag.appendChild(tabs);
+
   const lbl = document.createElement('div');
   lbl.className = 'section-hdr';
   lbl.textContent = fmtDLong(equipaDay);
   frag.appendChild(lbl);
+
   frag.appendChild(buildGrelha(equipaDay));
   return frag;
 }
+
+// ── TABS ───────────────────────────────────────────────────
 function switchTab(t) {
   activeTab = t;
   ['meus','equipa'].forEach(id => document.getElementById('tab-'+id).classList.toggle('active', id===t));
   render();
 }
+
+// ── RENDER ─────────────────────────────────────────────────
 function render() {
   const main = document.getElementById('main');
   main.innerHTML = '';
   if (activeTab==='meus') main.appendChild(renderMeusTurnos());
   else main.appendChild(renderEquipa());
 }
+
+// ── NOTIFICATIONS ──────────────────────────────────────────
 function scheduleNotification() {
   if (!('Notification' in window) || !ME) return;
   if (Notification.permission==='default') { Notification.requestPermission(); return; }
@@ -437,6 +459,7 @@ function scheduleNotification() {
   setTimeout(() => new Notification(`Turno em ${mins} min`, {body: `${soon.sala} · ${soon.start}–${soon.end}${soon.cir?' · '+soon.cir:''}`}), (mins-5)*60*1000);
 }
 
+// ── INIT ───────────────────────────────────────────────────
 tickClock();
 setInterval(tickClock, 30000);
 setInterval(() => { if (dataLoaded) render(); }, 60000);
@@ -444,6 +467,7 @@ setInterval(() => { if (dataLoaded) loadData().then(() => render()); }, 300000);
 
 (async function() {
   if (ME) {
+    // Returning user — show app with loading message
     document.getElementById('onboarding').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     document.getElementById('sigla-display').textContent = ME;
@@ -456,8 +480,9 @@ setInterval(() => { if (dataLoaded) loadData().then(() => render()); }, 300000);
       document.getElementById('main').innerHTML = '<div class="empty-msg" style="padding-top:60px;color:var(--red)">Erro ao carregar.<br>Verifica a ligação.</div>';
     }
   } else {
+    // New user — load data then show onboarding with real siglas
     document.getElementById('ob-sub').textContent = 'A carregar…';
-    const ok = await loadData();
+    await loadData();
     document.getElementById('ob-sub').textContent = 'Selecciona a tua sigla de anestesista';
     buildOnboarding();
   }
