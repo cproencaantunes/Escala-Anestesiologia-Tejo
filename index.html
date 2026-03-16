@@ -194,32 +194,49 @@ function isCur(s, d) { if(d!==TODAY) return false; const n=nowM(); return n>=toM
 function fmtD(d) { const dt=new Date(d+'T12:00:00'); return DPT[dt.getDay()]+' '+dt.getDate(); }
 function fmtDLong(d) { const dt=new Date(d+'T12:00:00'); return DPT[dt.getDay()]+' '+dt.getDate()+' '+MPT[dt.getMonth()]; }
 
-// ── LOAD DATA ──────────────────────────────────────────────
-async function loadData() {
-  try {
-    const res = await fetch(APPS_SCRIPT_URL, {cache: 'no-store'});
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const json = await res.json();
-    if (json.error) throw new Error(json.error);
-    DATA = json.DATA || {};
-    EE   = json.EE   || {};
-    PREV = json.PREV || {};
-    dataLoaded = true;
-    const days = getDays();
-    if (!equipaDay || !days.includes(equipaDay)) {
-      equipaDay = days.includes(TODAY) ? TODAY : (days[0] || TODAY);
-    }
-    return true;
-  } catch(e) {
-    return false;
-  }
+// ── LOAD DATA (JSONP to avoid CORS issues) ─────────────────
+function loadData() {
+  return new Promise(function(resolve) {
+    // Remove previous script tag if any
+    const old = document.getElementById('jsonp-script');
+    if (old) old.remove();
+
+    // JSONP callback
+    window.__escalaCallback = function(json) {
+      try {
+        if (json.error) throw new Error(json.error);
+        DATA = json.DATA || {};
+        EE   = json.EE   || {};
+        PREV = json.PREV || {};
+        dataLoaded = true;
+        const days = getDays();
+        if (!equipaDay || !days.includes(equipaDay)) {
+          equipaDay = days.includes(TODAY) ? TODAY : (days[0] || TODAY);
+        }
+        resolve(true);
+      } catch(e) {
+        resolve(false);
+      }
+    };
+
+    const script = document.createElement('script');
+    script.id = 'jsonp-script';
+    script.src = APPS_SCRIPT_URL + '&callback=__escalaCallback';
+    script.onerror = function() { resolve(false); };
+    document.head.appendChild(script);
+
+    // Timeout after 10 seconds
+    setTimeout(function() { resolve(false); }, 10000);
+  });
 }
 
 // ── ONBOARDING ─────────────────────────────────────────────
 function buildOnboarding() {
   const grid = document.getElementById('sigla-grid');
   grid.innerHTML = '';
-  const siglas = dataLoaded && getSiglas().length > 0 ? getSiglas() : ["ACS","AF","AP","ARC","CA","CB","CC","CP","DC","DH","DM","DS","EB","HS","JB","JD","LR","MG","MJ","ML","MM","MSM","MV","PP","RSB","SR","TC","TN","VB","ZCN"];
+  const liveSiglas = dataLoaded ? getSiglas() : [];
+  const staticSiglas = ["AC","ACS","AF","ALS","AP","ARC","CA","CB","CC","CG","CP","CR","DC","DH","DM","DS","EB","FFD","HS","JB","JD","LM","LR","LSS","MF","MG","MJ","ML","MM","MSM","MV","PP","RSB","SR","TC","TN","VB","ZCN"];
+  const siglas = liveSiglas.length > 0 ? liveSiglas : staticSiglas;
   siglas.forEach(s => {
     const b = document.createElement('button');
     b.className = 'sigla-btn' + (s === ME ? ' sel' : '');
