@@ -1,227 +1,469 @@
-// ============================================================
-// Escala HTJO — Google Apps Script
-// ============================================================
-// INSTRUÇÕES:
-// 1. Na Google Sheet: Extensões → Apps Script
-// 2. Apaga o código existente e cola este ficheiro completo
-// 3. Implementar → Nova implementação
-//    - Tipo: Aplicação Web
-//    - Executar como: Eu
-//    - Quem tem acesso: Qualquer pessoa (anónimo)
-// 4. Implementar → autoriza permissões → copia o URL /exec
-// Quando actualizares o script: Implementar → Gerir implementações
-//    → lápis → Nova versão → Implementar
-// ============================================================
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0f1e">
+<title>Escala HTJO</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0f1e;--bg2:#111827;--bg3:#1a2236;--card:#161d2e;--border:#1e2d45;--accent:#3b82f6;--cyan:#06b6d4;--green:#10b981;--amber:#f59e0b;--red:#ef4444;--text:#e2e8f0;--muted:#64748b;--faint:#1e2d45;--mono:'DM Mono',monospace;--sans:'Syne',sans-serif;}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);overscroll-behavior:none;}
 
-const SPREADSHEET_ID = "11k25sPDg2kdCmiiIIx-5vlbdoxMsJEba0U3JA17iiuo";
-const SHEET_NAME     = "ESCALA SEMANAL";
+/* ONBOARDING */
+#onboarding{position:fixed;inset:0;background:var(--bg);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;gap:24px;}
+.ob-title{font-size:28px;font-weight:800;letter-spacing:-1px;text-align:center;}
+.ob-title span{color:var(--accent);}
+.ob-sub{font-family:var(--mono);font-size:13px;color:var(--muted);text-align:center;}
+.sigla-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;width:100%;max-width:360px;}
+.sigla-btn{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 4px;font-family:var(--mono);font-size:13px;font-weight:500;color:var(--text);cursor:pointer;text-align:center;transition:all .15s;}
+.sigla-btn.sel{background:var(--accent);border-color:var(--accent);color:#fff;}
+.ob-confirm{width:100%;max-width:360px;background:var(--accent);border:none;border-radius:12px;padding:14px;font-family:var(--sans);font-size:15px;font-weight:700;color:#fff;cursor:pointer;opacity:0.4;pointer-events:none;transition:opacity .2s;}
+.ob-confirm.ready{opacity:1;pointer-events:auto;}
 
+/* HEADER */
+.header{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(10,15,30,0.96);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding:env(safe-area-inset-top,0) 0 0;}
+.header-inner{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 8px;}
+.logo{font-size:16px;font-weight:800;letter-spacing:-0.5px;}
+.logo span{color:var(--accent);}
+.header-right{display:flex;align-items:center;gap:10px;}
+.sigla-pill{font-family:var(--mono);font-size:12px;font-weight:500;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);color:var(--accent);padding:3px 10px;border-radius:20px;cursor:pointer;}
+.clock-pill{font-family:var(--mono);font-size:11px;color:var(--cyan);background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.2);padding:3px 8px;border-radius:20px;}
+.nav{display:flex;border-bottom:1px solid var(--border);}
+.nav-tab{flex:1;font-family:var(--mono);font-size:11px;color:var(--muted);padding:8px 4px;text-align:center;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;}
+.nav-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+
+/* MAIN */
+.main{padding-top:calc(env(safe-area-inset-top,0px) + 100px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 24px);min-height:100%;}
+
+/* ── MEU TURNO ── */
+.next-card{margin:12px 12px 4px;background:linear-gradient(135deg,rgba(59,130,246,0.15),rgba(6,182,212,0.08));border:1px solid rgba(59,130,246,0.35);border-radius:16px;padding:14px 16px;}
+.next-card.on-now{background:linear-gradient(135deg,rgba(16,185,129,0.15),rgba(16,185,129,0.05));border-color:rgba(16,185,129,0.4);}
+.next-label{font-family:var(--mono);font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;}
+.on-now .next-label{color:var(--green);}
+.next-time{font-size:26px;font-weight:800;letter-spacing:-1px;line-height:1;}
+.on-now .next-time{color:var(--green);}
+.next-meta{font-family:var(--mono);font-size:12px;color:var(--cyan);margin-top:4px;}
+.next-partner{font-size:13px;color:var(--muted);margin-top:6px;}
+.next-partner strong{color:var(--text);}
+.section-hdr{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;padding:14px 14px 6px;display:flex;align-items:center;gap:8px;}
+.section-hdr::after{content:'';flex:1;height:1px;background:var(--border);}
+.turno-card{margin:0 12px 8px;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.turno-card.active-now{border-color:rgba(16,185,129,0.5);}
+.turno-row{display:flex;align-items:stretch;gap:10px;padding:11px 14px;}
+.turno-bar{width:3px;border-radius:2px;background:var(--accent);opacity:0.5;flex-shrink:0;}
+.turno-bar.now{background:var(--green);opacity:1;}
+.turno-info{flex:1;min-width:0;}
+.turno-time{font-family:var(--mono);font-size:12px;color:var(--muted);}
+.turno-sala{font-size:15px;font-weight:700;margin:2px 0;}
+.turno-cir{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.turno-cir strong{color:var(--cyan);font-weight:600;}
+
+/* ── SALAS AGORA ── */
+.agora-grid{padding:0 12px;}
+.agora-card{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:8px;overflow:hidden;}
+.agora-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg3);border-bottom:1px solid var(--border);}
+.agora-sala{font-size:13px;font-weight:700;}
+.agora-time{font-family:var(--mono);font-size:11px;color:var(--muted);}
+.agora-body{padding:10px 14px;display:flex;flex-direction:column;gap:4px;}
+.agora-person.cir{color:var(--text);font-weight:600;font-size:13px;}
+.agora-person.ane{font-family:var(--mono);font-size:12px;color:var(--cyan);}
+.agora-person.ane.me{color:var(--green);font-weight:600;}
+.empty-msg{text-align:center;padding:40px 24px;color:var(--muted);font-size:13px;font-family:var(--mono);}
+
+/* ══════════════════════════════════════
+   GRELHA EQUIPA — estilo spreadsheet
+══════════════════════════════════════ */
+.grelha-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:0 0 16px;}
+
+/* day tabs inside equipa */
+.day-tabs{display:flex;gap:4px;padding:10px 12px 6px;overflow-x:auto;scrollbar-width:none;}
+.day-tabs::-webkit-scrollbar{display:none;}
+.day-tab{flex-shrink:0;font-family:var(--mono);font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;}
+.day-tab.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.day-tab.today{border-color:var(--green);color:var(--green);}
+.day-tab.today.active{background:var(--green);color:#fff;}
+
+table.grelha{border-collapse:collapse;font-family:var(--mono);font-size:11px;min-width:100%;}
+table.grelha th,table.grelha td{border:1px solid var(--border);padding:0;vertical-align:top;}
+
+/* sticky first col */
+table.grelha td.posto-cell,table.grelha th.posto-hdr{
+  position:sticky;left:0;z-index:2;
+  background:var(--bg3);
+  min-width:90px;max-width:90px;width:90px;
+}
+table.grelha th.posto-hdr{background:var(--bg2);z-index:3;}
+
+/* header row */
+table.grelha thead th{
+  background:var(--bg2);color:var(--muted);
+  font-size:10px;text-transform:uppercase;letter-spacing:.5px;
+  padding:6px 8px;white-space:nowrap;text-align:center;
+}
+table.grelha thead th.col-cir{color:var(--text);}
+table.grelha thead th.col-ane{color:var(--cyan);}
+
+/* posto label cell */
+.posto-cell{padding:8px 8px!important;font-size:11px;font-weight:500;color:var(--text);line-height:1.3;}
+.posto-cell.special{color:var(--amber);}
+
+/* data cells */
+td.col-cir,td.col-ane{min-width:96px;max-width:130px;padding:0!important;}
+
+/* slot block inside cell */
+.cell-slots{display:flex;flex-direction:column;}
+.cell-slot{padding:5px 7px;border-bottom:1px solid var(--faint);line-height:1.35;}
+.cell-slot:last-child{border-bottom:none;}
+.slot-name{font-size:11px;color:var(--text);font-weight:500;word-break:break-word;}
+.slot-name.ane-name{color:var(--cyan);}
+.slot-name.ane-name.is-me{color:var(--green);font-weight:700;}
+.slot-t{font-size:9px;color:var(--muted);margin-top:1px;}
+td.col-cir .slot-name{color:var(--text);}
+td.empty-cell{background:var(--bg);}
+
+/* section separator */
+tr.section-sep td{background:var(--bg2);padding:5px 8px!important;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--amber);font-family:var(--mono);border-top:2px solid var(--amber);}
+
+/* highlight my ANE column */
+td.col-ane .slot-name.is-me{background:rgba(16,185,129,0.1);border-radius:4px;padding:1px 3px;}
+
+.fade-in{animation:fi .18s ease;}
+@keyframes fi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.hidden{display:none!important;}
+</style>
+</head>
+<body>
+
+<!-- ONBOARDING -->
+<div id="onboarding">
+  <div class="ob-title">ESCALA <span>HTJO</span></div>
+  <div class="ob-sub">Selecciona a tua sigla de anestesista</div>
+  <div class="sigla-grid" id="sigla-grid"></div>
+  <button class="ob-confirm" id="ob-confirm" onclick="confirmSigla()">Confirmar</button>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <div class="header">
+    <div class="header-inner">
+      <div class="logo">ESCALA <span>HTJO</span></div>
+      <div class="header-right">
+        <div class="sigla-pill" id="sigla-display" onclick="changeSigla()">—</div>
+        <div class="clock-pill" id="clock">--:--</div>
+      </div>
+    </div>
+    <div class="nav">
+      <div class="nav-tab active" id="tab-meus" onclick="switchTab('meus')">Os meus turnos</div>
+      <div class="nav-tab" id="tab-agora" onclick="switchTab('agora')">Salas agora</div>
+      <div class="nav-tab" id="tab-equipa" onclick="switchTab('equipa')">Equipa</div>
+    </div>
+  </div>
+  <div class="main" id="main"></div>
+</div>
+
+<script>
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwjGIYXdJZRCd47OKJfLyy4WI031sIgBt2VWa9WEz-R8IpFIQZ4whFsV-xa5B_a4yx8lA/exec";
+
+// ── TSV PARSER ──────────────────────────────────────────────────────────────
 const SALA_MAP = {
-  "Sala 1":       [3,  4],
-  "Sala 2":       [5,  6],
-  "Sala 3":       [7,  8],
-  "Sala 4":       [9,  10],
-  "Sala 5":       [11, 12],
-  "Sala 6":       [13, 14],
-  "Sala 7":       [15, 16],
-  "Sala 8":       [17, 18],
-  "Sala 9":       [19, 20],
-  "Sala 10":      [21, 22],
-  "Angio Piso 0": [23, 24],
-  "Angio Piso 1": [25, 26],
-  "Imagiologia":  [27, 28],
-  "Consulta":     [37, null]
+  "Sala 1":      [2,3],  "Sala 2":      [4,5],  "Sala 3":      [6,7],
+  "Sala 4":      [8,9],  "Sala 5":      [10,11], "Sala 6":      [12,13],
+  "Sala 7":      [14,15],"Sala 8":      [16,17], "Sala 9":      [18,19],
+  "Sala 10":     [20,21],"Angio Piso 0":[22,23], "Angio Piso 1":[24,25],
+  "Imagiologia": [26,27],"Consulta":    [36,null]
 };
-const TJEE_COLS = [29, 30, 31, 32, 33, 34, 35, 36];
+const TJEE_COLS = [28,29,30,31,32,33,34,35];
 
-function doGet(e) {
-  try {
-    const result = parseEscala();
-    return ContentService
-      .createTextOutput(JSON.stringify(result))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch(err) {
-    return ContentService
-      .createTextOutput(JSON.stringify({ error: err.toString(), stack: err.stack }))
-      .setMimeType(ContentService.MimeType.JSON);
+// ── LOADING STATE ───────────────────────────────────────────────────────────
+let DATA={}, EE={}, PREV={};
+let dataLoaded=false;
+
+function showLoading(){
+  const main=document.getElementById('main');
+  if(main) main.innerHTML='<div class="empty-msg" style="padding-top:60px">A carregar escala...<br><span style="font-size:11px;color:var(--muted)">A ler Google Sheets</span></div>';
+}
+function showError(msg){
+  const main=document.getElementById('main');
+  if(main) main.innerHTML=`<div class="empty-msg" style="padding-top:60px;color:var(--red)">${msg}</div>`;
+}
+
+async function loadData(){
+  try{
+    showLoading();
+    const res = await fetch(APPS_SCRIPT_URL, {cache:'no-store'});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if(json.error) throw new Error(json.error);
+    DATA = json.DATA;
+    EE = json.EE;
+    PREV = json.PREV;
+    dataLoaded = true;
+    render();
+  } catch(e){
+    showError('Erro ao carregar a escala.\n'+e.message);
   }
 }
 
-function pad(n) { return String(n).padStart(2, '0'); }
+const ALL_SIGLAS=["ACS","AF","AP","ARC","CA","CB","CC","CP","DC","DH","DM","DS","EB","HS","JB","JD","LR","MG","MJ","ML","MM","MSM","MV","PP","RSB","SR","TC","TN","VB","ZCN"];
+const DAYS=[...new Set([...Object.keys(DATA),...Object.keys(PREV)])].sort();
+const TODAY=new Date().toISOString().slice(0,10);
+const DPT=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const MPT=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
-function fmtTime(v) {
-  if (v === null || v === undefined || v === '') return null;
-  if (v instanceof Date) {
-    return pad(v.getHours()) + ':' + pad(v.getMinutes());
-  }
-  if (typeof v === 'number' && v >= 0 && v < 1) {
-    const totalMin = Math.round(v * 1440);
-    return pad(Math.floor(totalMin / 60)) + ':' + pad(totalMin % 60);
-  }
-  const s = String(v).trim();
-  const m = s.match(/^(\d{1,2}):(\d{2})/);
-  if (m) return pad(parseInt(m[1])) + ':' + m[2];
+const BLOCO=['Sala 1','Sala 2','Sala 3','Sala 4','Sala 5','Sala 6','Sala 7','Sala 8','Sala 9','Sala 10','Angio Piso 0','Angio Piso 1','Imagiologia'];
+const ESPECIAIS=['TJEE 1,02','TJEE1,03','TJEE1,04','TJEE1,05','TJEE1,06','TJEE1,07','TJEE1,08','TJEE1,09'];
+const CONSULTA=['Consulta'];
+
+let ME=localStorage.getItem('sigla')||null;
+let activeTab='meus';
+let equipaDay=DAYS.includes(TODAY)?TODAY:DAYS[0];
+
+// ── UTILS ──
+function toM(t){const[h,m]=t.split(':').map(Number);return h*60+m;}
+function nowM(){const n=new Date();return n.getHours()*60+n.getMinutes();}
+function isCur(s,d){if(d!==TODAY)return false;const n=nowM();return n>=toM(s.start)&&n<=toM(s.end)+29;}
+function fmtD(d){const dt=new Date(d+'T12:00:00');return`${DPT[dt.getDay()]} ${dt.getDate()}`;}
+function fmtDLong(d){const dt=new Date(d+'T12:00:00');return`${DPT[dt.getDay()]} ${dt.getDate()} ${MPT[dt.getMonth()]}`;}
+function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1).toLowerCase():'';}
+
+// ── ONBOARDING ──
+function buildOnboarding(){
+  const grid=document.getElementById('sigla-grid');
+  ALL_SIGLAS.forEach(s=>{
+    const b=document.createElement('button');b.className='sigla-btn';b.textContent=s;
+    b.onclick=()=>{grid.querySelectorAll('.sigla-btn').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');document.getElementById('ob-confirm').classList.add('ready');};
+    grid.appendChild(b);
+  });
+}
+function confirmSigla(){
+  const sel=document.querySelector('.sigla-btn.sel');if(!sel)return;
+  ME=sel.textContent;localStorage.setItem('sigla',ME);
+  document.getElementById('onboarding').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('sigla-display').textContent=ME;
+  loadData();scheduleNotification();
+}
+function changeSigla(){
+  document.getElementById('onboarding').classList.remove('hidden');
+  document.getElementById('app').classList.add('hidden');
+  setTimeout(()=>{document.querySelectorAll('.sigla-btn').forEach(b=>{b.classList.toggle('sel',b.textContent===ME);});document.getElementById('ob-confirm').classList.add('ready');},50);
+}
+
+// ── CLOCK ──
+function tickClock(){const n=new Date();document.getElementById('clock').textContent=`${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;}
+
+// ── MEUS TURNOS ──
+function getMyShifts(){
+  const s=[];
+  DAYS.forEach(d=>{
+    const dd=DATA[d];if(!dd)return;
+    Object.entries(dd).forEach(([sala,slots])=>{slots.forEach(slot=>{if(slot.ane===ME)s.push({d,sala,...slot});});});
+    if(PREV[d]===ME) s.push({d,sala:'Prevenção',start:'',end:'',cir:null,ane:ME,isPrev:true});
+  });
+  return s.sort((a,b)=>a.d.localeCompare(b.d)||a.start.localeCompare(b.start));
+}
+function getNextShift(shifts){
+  const n=nowM();
+  const cur=shifts.find(s=>s.d===TODAY&&n>=toM(s.start)&&n<=toM(s.end)+29);if(cur)return{...cur,status:'now'};
+  const nt=shifts.find(s=>s.d===TODAY&&toM(s.start)>n);if(nt)return{...nt,status:'next'};
+  const f=shifts.find(s=>s.d>TODAY);if(f)return{...f,status:'future'};
   return null;
 }
-
-function fmtDate(v) {
-  if (!v) return null;
-  if (v instanceof Date && v.getFullYear() > 2000) {
-    return v.getFullYear() + '-' + pad(v.getMonth()+1) + '-' + pad(v.getDate());
+function renderMeusTurnos(){
+  const frag=document.createDocumentFragment();
+  const shifts=getMyShifts();const next=getNextShift(shifts);
+  if(next){
+    const h=document.createElement('div');h.className='next-card'+(next.status==='now'?' on-now':'');
+    const lbl=next.status==='now'?'● Em serviço agora':next.status==='next'?'Próximo turno hoje':'Próximo turno';
+    h.innerHTML=`<div class="next-label">${lbl}</div><div class="next-time">${next.start}–${next.end}</div><div class="next-meta">${next.d===TODAY?'Hoje':fmtD(next.d)} · ${next.sala}</div>${next.cir?`<div class="next-partner">Cirurgião: <strong>${next.cir}</strong></div>`:''}`;
+    frag.appendChild(h);
   }
-  return null;
+  const byDay={};shifts.forEach(s=>{if(!byDay[s.d])byDay[s.d]=[];byDay[s.d].push(s);});
+  Object.entries(byDay).forEach(([d,ss])=>{
+    const hdr=document.createElement('div');hdr.className='section-hdr';hdr.textContent=d===TODAY?`Hoje — ${fmtDLong(d)}`:fmtDLong(d);frag.appendChild(hdr);
+    ss.forEach(s=>{
+      const cur=isCur(s,s.d);
+      const c=document.createElement('div');c.className='turno-card fade-in'+(cur?' active-now':'');
+      c.innerHTML=`<div class="turno-row"><div class="turno-bar${cur?' now':''}"></div><div class="turno-info"><div class="turno-time">${s.start}–${s.end}</div><div class="turno-sala">${s.sala}</div><div class="turno-cir">${s.cir?`Cirurgião: <strong>${s.cir}</strong>`:'<em style="color:var(--faint)">Sem cirurgião</em>'}</div></div></div>`;
+      frag.appendChild(c);
+    });
+  });
+  if(!shifts.length){const e=document.createElement('div');e.className='empty-msg';e.innerHTML=`Sem turnos para <strong>${ME}</strong> esta semana.`;frag.appendChild(e);}
+  return frag;
 }
 
-function isAneSigla(v) {
-  return v && /^[A-Z]{1,4}$/.test(String(v).trim());
+// ── SALAS AGORA ──
+function renderSalasAgora(){
+  const frag=document.createDocumentFragment();
+  const n=nowM();const dd=DATA[TODAY];
+  const hdr=document.createElement('div');hdr.className='section-hdr';const dt=new Date();hdr.textContent=`Agora · ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;frag.appendChild(hdr);
+  if(!dd){const e=document.createElement('div');e.className='empty-msg';e.textContent='Sem dados para hoje.';frag.appendChild(e);return frag;}
+  const grid=document.createElement('div');grid.className='agora-grid';let count=0;
+  [...BLOCO,...ESPECIAIS].filter(sala=>dd[sala]).forEach(sala=>{
+    const active=dd[sala].filter(s=>n>=toM(s.start)&&n<=toM(s.end)+29);
+    if(!active.length)return;count++;
+    active.forEach(s=>{
+      const isMe=s.ane===ME;
+      const c=document.createElement('div');c.className='agora-card fade-in';c.style.borderColor=isMe?'rgba(16,185,129,0.5)':'';
+      c.innerHTML=`<div class="agora-head"><span class="agora-sala">${sala}${isMe?' <span style="color:var(--green);font-size:11px">● eu</span>':''}</span><span class="agora-time">${s.start}–${s.end}</span></div><div class="agora-body">${s.cir?`<div class="agora-person cir">${s.cir}</div>`:''}<div class="agora-person ane${isMe?' me':''}">Anest: ${s.ane||'—'}</div></div>`;
+      grid.appendChild(c);
+    });
+  });
+  if(!count){const e=document.createElement('div');e.className='empty-msg';e.textContent='Nenhuma sala activa agora.';grid.appendChild(e);}
+  frag.appendChild(grid);return frag;
 }
 
-function parseEscala() {
-  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) throw new Error('Folha "' + SHEET_NAME + '" não encontrada');
+// ── GRELHA EQUIPA ──
+function periodoLabel(start){
+  const h=parseInt(start.split(':')[0],10);
+  return h<13?'Manhã':'Tarde';
+}
 
-  const lastRow = sheet.getLastRow();
-  const lastCol = Math.max(37, sheet.getLastColumn());
-  const all     = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+function mkCellSlots(slots, type, isConsulta){
+  if(!slots||!slots.length) return '<td class="col-'+type+' empty-cell"></td>';
+  let html='<td class="col-'+type+'"><div class="cell-slots">';
+  slots.forEach(s=>{
+    const val = type==='cir' ? s.cir : s.ane;
+    const timeLabel = isConsulta ? periodoLabel(s.start) : s.start+'–'+s.end;
+    if(!val){html+=`<div class="cell-slot"><span class="slot-name" style="color:var(--faint)">—</span><div class="slot-t">${timeLabel}</div></div>`;return;}
+    const isMe = type==='ane' && val===ME;
+    html+=`<div class="cell-slot"><span class="slot-name${type==='ane'?' ane-name':''}${isMe?' is-me':''}">${val}</span><div class="slot-t">${timeLabel}</div></div>`;
+  });
+  html+='</div></td>';
+  return html;
+}
 
-  const DATA = {}, EE = {}, PREV = {};
-
-  // Day-start rows (col A is a Date)
-  const dayStarts = [];
-  all.forEach(function(row, i) {
-    const d = fmtDate(row[0]);
-    if (d && !dayStarts.find(function(x){ return x.day === d; })) {
-      dayStarts.push({ day: d, ri: i });
+function buildEECell(slots, type){
+  // slots = EE entries for one sala+periodo combo
+  if(!slots||!slots.length) return '<td class="empty-cell"></td>';
+  let html='<td class="col-'+type+'"><div class="cell-slots">';
+  slots.forEach(s=>{
+    if(type==='cir'){
+      html+=`<div class="cell-slot"><span class="slot-name">${s.medico}</span><div class="slot-t">${s.horario||s.periodo} · ${s.nexames}</div></div>`;
+    } else {
+      const isMe=s.ane===ME;
+      const val=s.ane||'—';
+      html+=`<div class="cell-slot"><span class="slot-name ane-name${isMe?' is-me':''}">${val}</span><div class="slot-t">${s.periodo}</div></div>`;
     }
   });
+  html+='</div></td>';
+  return html;
+}
 
-  // TJEE header rows
-  const tjeeHeaders = [];
-  all.forEach(function(row, i) {
-    if (String(row[28]||'').trim().startsWith('TJEE')) tjeeHeaders.push(i);
-  });
+function buildGrelha(d){
+  const dd=DATA[d]||{};
+  const ee=EE[d]||[];
+  const wrap=document.createElement('div');wrap.className='grelha-wrap';
+  let html='<table class="grelha"><thead><tr><th class="posto-hdr">Posto</th><th class="col-cir">Cirurgião</th><th class="col-ane">Anestesista</th></tr></thead><tbody>';
 
-  // TJEE column names
-  const tjeeNames = {};
-  if (tjeeHeaders.length > 0) {
-    TJEE_COLS.forEach(function(c) {
-      tjeeNames[c] = String(all[tjeeHeaders[0]][c-1]||'').trim() || ('TJEE' + c);
+  // BLOCO section — only show if there's any activity
+  const blocoAtivo=BLOCO.some(sala=>dd[sala]&&dd[sala].length);
+  if(blocoAtivo){
+    html+='<tr class="section-sep"><td colspan="3">Bloco Operatório</td></tr>';
+    BLOCO.forEach(sala=>{
+      const slots=dd[sala];
+      const isSpecial=sala.startsWith('Angio')||sala==='Imagiologia';
+      if(!slots||!slots.length){
+        html+=`<tr><td class="posto-cell${isSpecial?' special':''}">${sala}</td><td class="empty-cell"></td><td class="empty-cell"></td></tr>`;
+        return;
+      }
+      html+=`<tr><td class="posto-cell${isSpecial?' special':''}">${sala}</td>${mkCellSlots(slots,'cir',false)}${mkCellSlots(slots,'ane',false)}</tr>`;
     });
   }
 
-  // Rows to skip during bloco parse (TJEE data rows)
-  const tjeeSkip = {};
-  tjeeHeaders.forEach(function(hr) {
-    for (var i = hr; i <= hr+5; i++) tjeeSkip[i] = true;
-  });
+  // PREVENÇÃO row
+  html+='<tr class="section-sep" style="border-top-color:var(--purple)"><td colspan="3" style="color:var(--purple)">Prevenção · 21h00</td></tr>';
+  html+='<tr><td class="posto-cell" style="color:var(--purple)">ANE Prevenção</td>';
+  const prevAne=PREV[d]||null;
+  const prevIsMe=prevAne===ME;
+  html+=`<td class="empty-cell"></td><td class="col-ane"><div class="cell-slots"><div class="cell-slot"><span class="slot-name ane-name${prevIsMe?' is-me':''}">${prevAne||'—'}</span></div></div></td></tr>`;
 
-  // Parse each day
-  dayStarts.forEach(function(ds, di) {
-    const day   = ds.day;
-    const ri    = ds.ri;
-    const riEnd = di+1 < dayStarts.length ? dayStarts[di+1].ri : lastRow;
-
-    DATA[day] = {};
-    EE[day]   = [];
-
-    const state = {};
-
-    function flush(sala) {
-      if (state[sala]) {
-        if (!DATA[day][sala]) DATA[day][sala] = [];
-        DATA[day][sala].push({
-          start: state[sala].start,
-          end:   state[sala].end,
-          cir:   state[sala].cir,
-          ane:   state[sala].ane
-        });
-        state[sala] = null;
-      }
-    }
-    function flushAll() {
-      Object.keys(SALA_MAP).forEach(flush);
-    }
-
-    for (var i = ri; i < riEnd; i++) {
-      var row = all[i];
-
-      // PREVENÇÃO
-      if (String(row[28]||'').trim() === 'PREVENÇÃO') {
-        var sigRow = all[i+2];
-        if (sigRow) {
-          var sig = String(sigRow[28]||'').trim();
-          if (isAneSigla(sig)) PREV[day] = sig;
-        }
-      }
-
-      if (tjeeSkip[i]) continue;
-
-      var t = fmtTime(row[1]);
-      if (!t) continue;
-
-      Object.keys(SALA_MAP).forEach(function(sala) {
-        var cols = SALA_MAP[sala];
-        var cirC = cols[0], aneC = cols[1];
-        var cir = String(row[cirC-1]||'').trim() || null;
-        var ane = aneC ? (String(row[aneC-1]||'').trim() || null) : null;
-        var cirOk = (cir && cir.length > 1) ? cir : null;
-        var aneOk = isAneSigla(ane) ? ane : null;
-
-        if (cirOk) {
-          var prev = state[sala];
-          if (prev && prev.cir === cirOk && prev.ane === aneOk) {
-            state[sala].end = t;
-          } else {
-            flush(sala);
-            state[sala] = { start: t, end: t, cir: cirOk, ane: aneOk };
-          }
-        } else {
-          flush(sala);
-        }
-      });
-    }
-    flushAll();
-
-    // TJEE blocks
-    tjeeHeaders
-      .filter(function(hr){ return hr >= ri && hr < riEnd; })
-      .forEach(function(hr, blockIdx) {
-        var periodo = blockIdx === 0 ? 'Manhã' : 'Tarde';
-        TJEE_COLS.forEach(function(c) {
-          var medico = String(all[hr+2] ? all[hr+2][c-1]||'' : '').trim();
-          if (!medico || medico.length < 2) return;
-          var rawH   = all[hr+3] ? all[hr+3][c-1] : '';
-          var horario = fmtTime(rawH) || String(rawH||'').trim().replace(/^(\d{2}:\d{2}):\d{2}$/, '$1');
-          var nexames = String(all[hr+4] ? all[hr+4][c-1]||'' : '').trim();
-          var aneRaw  = String(all[hr+5] ? all[hr+5][c-1]||'' : '').trim();
-          EE[day].push({
-            sala:    tjeeNames[c] || ('TJEE' + c),
-            periodo: periodo,
-            medico:  medico,
-            horario: horario,
-            nexames: nexames,
-            ane:     isAneSigla(aneRaw) ? aneRaw : null
-          });
-        });
-      });
-  });
-
-  // Sunday prevention (after last day)
-  if (dayStarts.length > 0) {
-    var lastRi = dayStarts[dayStarts.length-1].ri;
-    for (var i = lastRi+1; i < lastRow; i++) {
-      if (String(all[i][28]||'').trim() === 'PREVENÇÃO') {
-        var sig = String(all[i+2] ? all[i+2][28]||'' : '').trim();
-        if (isAneSigla(sig)) {
-          var ld = new Date(dayStarts[dayStarts.length-1].day + 'T12:00:00');
-          ld.setDate(ld.getDate() + 1);
-          PREV[fmtDate(ld)] = sig;
-        }
-        break;
-      }
-    }
+  // EXAMES ESPECIAIS section — rows = TJEE sala, cols = CIR(médico) | ANE, split manhã/tarde
+  const eeSalas=[...new Set(ee.map(e=>e.sala))].sort();
+  if(eeSalas.length){
+    html+='<tr class="section-sep"><td colspan="3">Exames Especiais</td></tr>';
+    // Two sub-header rows: Manhã | Tarde, each with CIR+ANE
+    html+='<tr><th class="posto-hdr"></th><th class="col-cir" style="font-size:10px;color:var(--muted);text-align:center">Médico · Manhã / Tarde</th><th class="col-ane" style="font-size:10px;color:var(--cyan);text-align:center">Anest · Manhã / Tarde</th></tr>';
+    eeSalas.forEach(sala=>{
+      const manha=ee.filter(e=>e.sala===sala&&e.periodo==='Manhã');
+      const tarde=ee.filter(e=>e.sala===sala&&e.periodo==='Tarde');
+      const allSlots=[...manha,...tarde];
+      html+=`<tr><td class="posto-cell special">${sala}</td>${buildEECell(allSlots,'cir')}${buildEECell(allSlots,'ane')}</tr>`;
+    });
   }
 
-  return { DATA: DATA, EE: EE, PREV: PREV, updated: new Date().toISOString() };
+  // CONSULTA section
+  const consulta=dd['Consulta'];
+  if(consulta&&consulta.length){
+    html+='<tr class="section-sep"><td colspan="3">Consulta</td></tr>';
+    html+=`<tr><td class="posto-cell">Consulta</td>${mkCellSlots(consulta,'cir',true)}${mkCellSlots(consulta,'ane',true)}</tr>`;
+  }
+
+  html+='</tbody></table>';
+  wrap.innerHTML=html;
+  return wrap;
 }
+
+function renderEquipa(){
+  const frag=document.createDocumentFragment();
+
+  // Day tabs
+  const tabs=document.createElement('div');tabs.className='day-tabs';
+  DAYS.forEach(d=>{
+    const isT=d===TODAY;
+    const dt=new Date(d+'T12:00:00');
+    const lbl=isT?'Hoje':`${DPT[dt.getDay()]} ${dt.getDate()}`;
+    const t=document.createElement('button');
+    t.className='day-tab'+(isT?' today':'')+(d===equipaDay?' active':'');
+    t.textContent=lbl;
+    t.onclick=()=>{equipaDay=d;renderEquipa&&render();};
+    tabs.appendChild(t);
+  });
+  frag.appendChild(tabs);
+
+  // Date label
+  const lbl=document.createElement('div');lbl.className='section-hdr';lbl.textContent=fmtDLong(equipaDay);frag.appendChild(lbl);
+
+  // Grid
+  frag.appendChild(buildGrelha(equipaDay));
+  return frag;
+}
+
+// ── NOTIFICATIONS ──
+function scheduleNotification(){
+  if(!('Notification' in window)||!ME)return;
+  if(Notification.permission==='default'){Notification.requestPermission();return;}
+  if(Notification.permission!=='granted')return;
+  const shifts=getMyShifts();const n=nowM();
+  const soon=shifts.find(s=>s.d===TODAY&&toM(s.start)>n&&toM(s.start)-n<=30);
+  if(!soon)return;
+  const mins=toM(soon.start)-n;
+  setTimeout(()=>new Notification(`Turno em ${mins} min`,{body:`${soon.sala} · ${soon.start}–${soon.end}${soon.cir?' · '+soon.cir:''}`}),(mins-5)*60*1000);
+}
+
+// ── TABS ──
+function switchTab(t){
+  activeTab=t;
+  ['meus','agora','equipa'].forEach(id=>document.getElementById('tab-'+id).classList.toggle('active',id===t));
+  render();
+}
+
+// ── RENDER ──
+function render(){
+  const main=document.getElementById('main');main.innerHTML='';
+  if(activeTab==='meus')main.appendChild(renderMeusTurnos());
+  else if(activeTab==='agora')main.appendChild(renderSalasAgora());
+  else main.appendChild(renderEquipa());
+}
+
+// ── INIT ──
+buildOnboarding();tickClock();setInterval(tickClock,30000);setInterval(()=>{if(activeTab!=='equipa')render();},60000);
+setInterval(()=>{if(dataLoaded)loadData();},300000);
+if(ME){document.getElementById('onboarding').classList.add('hidden');document.getElementById('app').classList.remove('hidden');document.getElementById('sigla-display').textContent=ME;loadData();scheduleNotification();}
+</script>
+</body>
+</html>
