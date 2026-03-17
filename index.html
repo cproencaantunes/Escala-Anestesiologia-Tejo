@@ -53,8 +53,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .turno-info{flex:1;min-width:0;}
 .turno-time{font-family:var(--mono);font-size:12px;color:var(--muted);}
 .turno-sala{font-size:15px;font-weight:700;margin:2px 0;}
-.turno-cir{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.turno-cir strong{color:var(--cyan);font-weight:600;}
+.turno-cir{font-size:13px;color:var(--text);font-weight:600;margin-bottom:4px;}
+.doentes-list{margin-top:6px;border-top:1px solid var(--faint);padding-top:6px;}
+.doente-row{display:flex;gap:8px;padding:2px 0;font-family:var(--mono);font-size:11px;}
+.doente-hcis{color:var(--amber);min-width:70px;flex-shrink:0;}
+.doente-proc{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .empty-msg{text-align:center;padding:40px 24px;color:var(--muted);font-size:13px;font-family:var(--mono);}
 .grelha-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:0 0 16px;}
 .day-tabs{display:flex;gap:4px;padding:10px 12px 6px;overflow-x:auto;scrollbar-width:none;}
@@ -112,7 +115,7 @@ td.col-ane .slot-name.is-me{background:rgba(16,185,129,0.1);border-radius:4px;pa
   <div class="main" id="main"></div>
 </div>
 <script>
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwifKdRcu7aEOFollwNCdJpbRKtyc0i-6t251OoQXLCP3a-XDYbqDyouQs7GzTYexX7ZA/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjWTpJz27Bm59TAcpWwKxyz_eziT_lWJLf8jMAQk8uOXDufLuUluOx4MTMnDK9GfVL/exec";
 const STATIC_SIGLAS = ["AC","ACS","AF","ALS","AP","ARC","CA","CB","CC","CG","CP","CR","DC","DH","DM","DS","EB","FFD","HS","JB","JD","LM","LR","LSS","MF","MG","MJ","ML","MM","MSM","MV","PP","RSB","SR","TC","TN","VB","ZCN"];
 
 let DATA={}, EE={}, PREV={};
@@ -130,7 +133,6 @@ function getDays(){return[...new Set([...Object.keys(DATA),...Object.keys(PREV)]
 function getSiglas(){
   const s=new Set();
   Object.values(DATA).forEach(dd=>Object.values(dd).forEach(slots=>slots.forEach(sl=>{if(sl.ane)s.add(sl.ane);})));
-  Object.values(EE).forEach(arr=>arr.forEach(sl=>{if(sl.ane)s.add(sl.ane);}));
   Object.values(PREV).forEach(v=>{if(v)s.add(v);});
   return[...s].sort();
 }
@@ -150,8 +152,8 @@ async function loadData(){
     if(!res.ok)throw new Error('HTTP '+res.status);
     const text=await res.text();
     let json;
-    try{ json=JSON.parse(text); }
-    catch(e){ throw new Error('JSON inválido: '+text.slice(0,100)); }
+    try{json=JSON.parse(text);}
+    catch(e){throw new Error('JSON inválido: '+text.slice(0,100));}
     if(json.error)throw new Error(json.error);
     DATA=json.DATA||{};
     EE=json.EE||{};
@@ -220,7 +222,7 @@ function getMyShifts(){
     if(dd)Object.entries(dd).forEach(([sala,slots])=>{
       slots.forEach(slot=>{if(slot.ane===ME)s.push({d,sala,...slot});});
     });
-    if(PREV[d]===ME)s.push({d,sala:'Prevenção',start:'',end:'',cir:null,ane:ME,isPrev:true});
+    if(PREV[d]===ME)s.push({d,sala:'Prevenção',start:'',end:'',cir:null,ane:ME,isPrev:true,doentes:[]});
   });
   return s.sort((a,b)=>a.d.localeCompare(b.d)||a.start.localeCompare(b.start));
 }
@@ -261,12 +263,16 @@ function renderMeusTurnos(){
       const cur=s.start&&isCur(s,s.d);
       const card=document.createElement('div');
       card.className='turno-card fade-in'+(cur?' active-now':'');
+      const doentes=s.doentes&&s.doentes.length>0
+        ?'<div class="doentes-list">'+s.doentes.map(d=>`<div class="doente-row"><span class="doente-hcis">${d.hcis}</span><span class="doente-proc">${d.proc}</span></div>`).join('')+'</div>'
+        :'';
       card.innerHTML=`<div class="turno-row">
         <div class="turno-bar${cur?' now':''}"></div>
         <div class="turno-info">
           <div class="turno-time">${s.start&&s.end?s.start+'–'+s.end:''}</div>
           <div class="turno-sala">${s.sala}</div>
-          <div class="turno-cir">${s.cir?`Cirurgião: <strong>${s.cir}</strong>`:'<em style="color:var(--faint)">Sem cirurgião</em>'}</div>
+          ${s.cir?`<div class="turno-cir">${s.cir}</div>`:''}
+          ${doentes}
         </div>
       </div>`;
       frag.appendChild(card);
@@ -295,23 +301,8 @@ function mkCellSlots(slots,type,isConsulta){
   return html+'</div></td>';
 }
 
-function buildEECell(slots,type){
-  if(!slots||!slots.length)return'<td class="empty-cell"></td>';
-  let html='<td class="col-'+type+'"><div class="cell-slots">';
-  slots.forEach(s=>{
-    if(type==='cir'){
-      html+=`<div class="cell-slot"><span class="slot-name">${s.medico}</span><div class="slot-t">${s.horario||s.periodo} · ${s.nexames}</div></div>`;
-    }else{
-      const isMe=s.ane===ME;
-      html+=`<div class="cell-slot"><span class="slot-name ane-name${isMe?' is-me':''}">${s.ane||'—'}</span><div class="slot-t">${s.periodo}</div></div>`;
-    }
-  });
-  return html+'</div></td>';
-}
-
 function buildGrelha(d){
   const dd=DATA[d]||{};
-  const ee=EE[d]||[];
   const wrap=document.createElement('div');wrap.className='grelha-wrap';
   let html='<table class="grelha"><thead><tr><th class="posto-hdr">Posto</th><th class="col-cir">Cirurgião</th><th class="col-ane">Anestesista</th></tr></thead><tbody>';
   const blocoAtivo=BLOCO.some(sala=>dd[sala]&&dd[sala].length);
@@ -331,14 +322,6 @@ function buildGrelha(d){
   const prevIsMe=prevAne===ME;
   html+=`<tr class="section-sep" style="border-top-color:var(--purple)"><td colspan="3" style="color:var(--purple)">Prevenção</td></tr>`;
   html+=`<tr><td class="posto-cell" style="color:var(--purple)">ANE Prevenção</td><td class="empty-cell"></td><td class="col-ane"><div class="cell-slots"><div class="cell-slot"><span class="slot-name ane-name${prevIsMe?' is-me':''}">${prevAne||'—'}</span></div></div></td></tr>`;
-  const eeSalas=[...new Set(ee.map(e=>e.sala))].sort();
-  if(eeSalas.length){
-    html+='<tr class="section-sep"><td colspan="3">Exames Especiais</td></tr>';
-    eeSalas.forEach(sala=>{
-      const allSlots=ee.filter(e=>e.sala===sala);
-      html+=`<tr><td class="posto-cell special">${sala}</td>${buildEECell(allSlots,'cir')}${buildEECell(allSlots,'ane')}</tr>`;
-    });
-  }
   const consulta=dd['Consulta'];
   if(consulta&&consulta.length){
     html+='<tr class="section-sep"><td colspan="3">Consulta</td></tr>';
@@ -410,20 +393,14 @@ setInterval(()=>{if(dataLoaded)loadData().then(()=>{if(ME)render();});},300000);
       document.getElementById('main').innerHTML='<div class="empty-msg" style="padding-top:60px;color:var(--red)">Erro ao carregar dados.<br><small style="font-size:10px;color:var(--muted)">Tenta recarregar a página</small><br><br><button onclick="location.reload()" style="background:var(--accent);border:none;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer">Recarregar</button></div>';
     }
   }else{
-    // Show static siglas immediately — always works even without network
     buildOnboarding();
-    // Load data in background to get live siglas
-    loadData().then(()=>{
-      buildOnboarding(); // rebuild with live siglas if available
-    }).catch(()=>{});
+    loadData().then(()=>{buildOnboarding();}).catch(()=>{});
   }
 })();
 
-// ── SERVICE WORKER ─────────────────────────────────────────
-if('serviceWorker' in navigator){
-  window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('sw.js')
-      .catch(err => console.log('SW error:', err));
+if('serviceWorker'in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js').catch(err=>console.log('SW error:',err));
   });
 }
 </script>
