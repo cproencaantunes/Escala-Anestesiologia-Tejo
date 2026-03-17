@@ -318,10 +318,23 @@ function buildGrelha(d){
       }
     });
   }
+  // PREVENÇÃO
   const prevAne=PREV[d]||null;
   const prevIsMe=prevAne===ME;
   html+=`<tr class="section-sep" style="border-top-color:var(--purple)"><td colspan="3" style="color:var(--purple)">Prevenção</td></tr>`;
   html+=`<tr><td class="posto-cell" style="color:var(--purple)">ANE Prevenção</td><td class="empty-cell"></td><td class="col-ane"><div class="cell-slots"><div class="cell-slot"><span class="slot-name ane-name${prevIsMe?' is-me':''}">${prevAne||'—'}</span></div></div></td></tr>`;
+
+  // EXAMES ESPECIAIS
+  const ee=EE[d]||[];
+  const eeSalas=[...new Set(ee.map(e=>e.sala))].sort();
+  if(eeSalas.length){
+    html+='<tr class="section-sep"><td colspan="3">Exames Especiais</td></tr>';
+    html+='<tr><th class="posto-hdr"></th><th class="col-cir" style="font-size:10px;color:var(--muted);text-align:center">Médico · Manhã / Tarde</th><th class="col-ane" style="font-size:10px;color:var(--cyan);text-align:center">Anest · Manhã / Tarde</th></tr>';
+    eeSalas.forEach(sala=>{
+      const allSlots=ee.filter(e=>e.sala===sala);
+      html+=`<tr><td class="posto-cell special">${sala}</td>${buildEECell(allSlots,'cir')}${buildEECell(allSlots,'ane')}</tr>`;
+    });
+  }
   const consulta=dd['Consulta'];
   if(consulta&&consulta.length){
     html+='<tr class="section-sep"><td colspan="3">Consulta</td></tr>';
