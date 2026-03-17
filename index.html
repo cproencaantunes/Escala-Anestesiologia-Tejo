@@ -341,13 +341,17 @@ function buildGrelha(d){
     html+=`<tr><td class="posto-cell">Consulta</td>${mkCellSlots(consulta,'cir',true)}${mkCellSlots(consulta,'ane',true)}</tr>`;
   }
   html+='</tbody></table>';
-  wrap.innerHTML=html;
+  try{ wrap.innerHTML=html; }
+  catch(e){ wrap.innerHTML='<div class="empty-msg" style="color:var(--red)">Erro: '+e.message+'</div>'; }
   return wrap;
 }
 
 function renderEquipa(){
   const frag=document.createDocumentFragment();
   const days=getDays();
+  if(!dataLoaded){
+    const e=document.createElement('div');e.className='empty-msg';e.textContent='A carregar...';frag.appendChild(e);return frag;
+  }
   const tabs=document.createElement('div');tabs.className='day-tabs';
   days.forEach(d=>{
     const isT=d===TODAY;
