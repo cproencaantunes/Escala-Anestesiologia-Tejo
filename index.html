@@ -115,7 +115,7 @@ td.col-ane .slot-name.is-me{background:rgba(16,185,129,0.1);border-radius:4px;pa
   <div class="main" id="main"></div>
 </div>
 <script>
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxzK8DrBQVkyHC7blUEH6P7mQVMKtOo9KQ_K8RM6lOHopBXwDxKlNWJ7LIQUriQs_I/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbybwMvBDGp-xYz1DYwJsRbguRwVuMUCNnHBdUx1YGETim97WfiBSDl7cHN21Q2kGxHF/exec";
 const STATIC_SIGLAS = ["AC","ACS","AF","ALS","AP","ARC","CA","CB","CC","CG","CP","CR","DC","DH","DM","DS","EB","FFD","HS","JB","JD","LM","LR","LSS","MF","MG","MJ","ML","MM","MSM","MV","PP","RSB","SR","TC","TN","VB","ZCN"];
 
 let DATA={}, EE={}, PREV={};
@@ -361,21 +361,21 @@ function buildGrelha(d){
   const consulta=dd['Consulta'];
   if(consulta&&consulta.length){
     html+='<tr class="section-sep"><td colspan="3">Consulta</td></tr>';
-    // Consulta: col 63 has ANE sigla, group by Manhã/Tarde
-    const cManha=consulta.filter(s=>parseInt((s.cir||s.ane||'0').split(':')[0],10)<13||periodoLabel(s.start)==='Manhã');
-    const cTarde=consulta.filter(s=>periodoLabel(s.start)==='Tarde');
+    // Group by periodo (set by Apps Script based on time position)
+    const cManha=consulta.filter(s=>s.periodo==='Manhã'||(s.periodo==null&&periodoLabel(s.start)==='Manhã'));
+    const cTarde=consulta.filter(s=>s.periodo==='Tarde'||(s.periodo==null&&periodoLabel(s.start)==='Tarde'));
     let cHtml='<td class="col-cir"><div class="cell-slots">';
     if(cManha.length) cHtml+=`<div class="cell-slot"><span class="slot-name">Manhã</span></div>`;
     if(cTarde.length) cHtml+=`<div class="cell-slot"><span class="slot-name">Tarde</span></div>`;
     cHtml+='</div></td>';
     let aHtml='<td class="col-ane"><div class="cell-slots">';
     if(cManha.length){
-      const sigs=cManha.map(s=>s.cir||s.ane||'—').filter(Boolean);
+      const sigs=[...new Set(cManha.map(s=>s.cir||s.ane).filter(Boolean))];
       const isMe=sigs.includes(ME);
       aHtml+=`<div class="cell-slot"><span class="slot-name ane-name${isMe?' is-me':''}">${sigs.join(', ')}</span><div class="slot-t">Manhã</div></div>`;
     }
     if(cTarde.length){
-      const sigs=cTarde.map(s=>s.cir||s.ane||'—').filter(Boolean);
+      const sigs=[...new Set(cTarde.map(s=>s.cir||s.ane).filter(Boolean))];
       const isMe=sigs.includes(ME);
       aHtml+=`<div class="cell-slot"><span class="slot-name ane-name${isMe?' is-me':''}">${sigs.join(', ')}</span><div class="slot-t">Tarde</div></div>`;
     }
