@@ -218,10 +218,17 @@ function tickClock(){
 function getMyShifts(){
   const s=[];
   getDays().forEach(d=>{
+    // Bloco + Consulta
     const dd=DATA[d];
     if(dd)Object.entries(dd).forEach(([sala,slots])=>{
       slots.forEach(slot=>{if(slot.ane===ME)s.push({d,sala,...slot});});
     });
+    // Exames Especiais
+    const ee=EE[d]||[];
+    ee.forEach(slot=>{
+      if(slot.ane===ME) s.push({d,sala:slot.sala,start:slot.horario||'',end:'',cir:slot.medico,ane:slot.ane,doentes:[],isEE:true,periodo:slot.periodo,nexames:slot.nexames});
+    });
+    // Prevenção
     if(PREV[d]===ME)s.push({d,sala:'Prevenção',start:'',end:'',cir:null,ane:ME,isPrev:true,doentes:[]});
   });
   return s.sort((a,b)=>a.d.localeCompare(b.d)||a.start.localeCompare(b.start));
@@ -350,10 +357,30 @@ function buildGrelha(d){
       html+=`<tr><td class="posto-cell special">${sala}</td>${buildEECell(allSlots,'cir')}${buildEECell(allSlots,'ane')}</tr>`;
     });
   }
+  // CONSULTA
   const consulta=dd['Consulta'];
   if(consulta&&consulta.length){
     html+='<tr class="section-sep"><td colspan="3">Consulta</td></tr>';
-    html+=`<tr><td class="posto-cell">Consulta</td>${mkCellSlots(consulta,'cir',true)}${mkCellSlots(consulta,'ane',true)}</tr>`;
+    // Consulta: col 63 has ANE sigla, group by Manhã/Tarde
+    const cManha=consulta.filter(s=>parseInt((s.cir||s.ane||'0').split(':')[0],10)<13||periodoLabel(s.start)==='Manhã');
+    const cTarde=consulta.filter(s=>periodoLabel(s.start)==='Tarde');
+    let cHtml='<td class="col-cir"><div class="cell-slots">';
+    if(cManha.length) cHtml+=`<div class="cell-slot"><span class="slot-name">Manhã</span></div>`;
+    if(cTarde.length) cHtml+=`<div class="cell-slot"><span class="slot-name">Tarde</span></div>`;
+    cHtml+='</div></td>';
+    let aHtml='<td class="col-ane"><div class="cell-slots">';
+    if(cManha.length){
+      const sigs=cManha.map(s=>s.cir||s.ane||'—').filter(Boolean);
+      const isMe=sigs.includes(ME);
+      aHtml+=`<div class="cell-slot"><span class="slot-name ane-name${isMe?' is-me':''}">${sigs.join(', ')}</span><div class="slot-t">Manhã</div></div>`;
+    }
+    if(cTarde.length){
+      const sigs=cTarde.map(s=>s.cir||s.ane||'—').filter(Boolean);
+      const isMe=sigs.includes(ME);
+      aHtml+=`<div class="cell-slot"><span class="slot-name ane-name${isMe?' is-me':''}">${sigs.join(', ')}</span><div class="slot-t">Tarde</div></div>`;
+    }
+    aHtml+='</div></td>';
+    html+=`<tr><td class="posto-cell">Consulta</td>${cHtml}${aHtml}</tr>`;
   }
   html+='</tbody></table>';
   try{ wrap.innerHTML=html; }
