@@ -288,7 +288,7 @@ function renderMeusTurnos(){
       card.innerHTML=`<div class="turno-row">
         <div class="turno-bar${cur?' now':''}"></div>
         <div class="turno-info">
-          <div class="turno-time">${s.start&&s.end&&s.start!==s.end?s.start+'–'+s.end:s.start||''}</div>
+          <div class="turno-time">${s.sala==='Consulta'||s.isEE&&!s.start?'':s.start&&s.end&&s.start!==s.end?s.start+'–'+s.end:s.start||''}</div>
           <div class="turno-sala">${s.sala}</div>
           ${cardContent}
         </div>
