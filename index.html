@@ -301,6 +301,21 @@ function mkCellSlots(slots,type,isConsulta){
   return html+'</div></td>';
 }
 
+function buildEECell(slots, type){
+  if(!slots||!slots.length) return '<td class="empty-cell"></td>';
+  let html='<td class="col-'+type+'"><div class="cell-slots">';
+  slots.forEach(s=>{
+    if(type==='cir'){
+      html+=`<div class="cell-slot"><span class="slot-name">${s.medico}</span><div class="slot-t">${s.horario||s.periodo} · ${s.nexames}</div></div>`;
+    } else {
+      const isMe=s.ane===ME;
+      html+=`<div class="cell-slot"><span class="slot-name ane-name${isMe?' is-me':''}">${s.ane||'—'}</span><div class="slot-t">${s.periodo}</div></div>`;
+    }
+  });
+  html+='</div></td>';
+  return html;
+}
+
 function buildGrelha(d){
   const dd=DATA[d]||{};
   const wrap=document.createElement('div');wrap.className='grelha-wrap';
@@ -349,9 +364,6 @@ function buildGrelha(d){
 function renderEquipa(){
   const frag=document.createDocumentFragment();
   const days=getDays();
-  if(!dataLoaded){
-    const e=document.createElement('div');e.className='empty-msg';e.textContent='A carregar...';frag.appendChild(e);return frag;
-  }
   const tabs=document.createElement('div');tabs.className='day-tabs';
   days.forEach(d=>{
     const isT=d===TODAY;
