@@ -270,16 +270,27 @@ function renderMeusTurnos(){
       const cur=s.start&&isCur(s,s.d);
       const card=document.createElement('div');
       card.className='turno-card fade-in'+(cur?' active-now':'');
-      const doentes=s.doentes&&s.doentes.length>0
-        ?'<div class="doentes-list">'+s.doentes.map(d=>`<div class="doente-row"><span class="doente-hcis">${d.hcis}</span><span class="doente-proc">${d.proc}</span></div>`).join('')+'</div>'
-        :'';
+      let cardContent='';
+      if(s.isEE){
+        // Exames Especiais
+        cardContent=`<div class="turno-cir"><strong>${s.cir||''}</strong></div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--amber);margin-top:3px">${s.start?s.start+' · ':''}${s.nexames||''} · ${s.periodo||''}</div>`;
+      } else if(s.isPrev){
+        cardContent='';
+      } else if(s.sala==='Consulta'){
+        cardContent=`<div class="turno-cir"><em style="color:var(--muted)">${s.periodo||periodoLabel(s.start)}</em></div>`;
+      } else {
+        const doentes=s.doentes&&s.doentes.length>0
+          ?'<div class="doentes-list">'+s.doentes.map(d=>`<div class="doente-row"><span class="doente-hcis">${d.hcis}</span><span class="doente-proc">${d.proc}</span></div>`).join('')+'</div>'
+          :'';
+        cardContent=`<div class="turno-cir">${s.cir?`<strong>${s.cir}</strong>`:'<em style="color:var(--faint)">Sem cirurgião</em>'}</div>${doentes}`;
+      }
       card.innerHTML=`<div class="turno-row">
         <div class="turno-bar${cur?' now':''}"></div>
         <div class="turno-info">
-          <div class="turno-time">${s.start&&s.end?s.start+'–'+s.end:''}</div>
+          <div class="turno-time">${s.start&&s.end&&s.start!==s.end?s.start+'–'+s.end:s.start||''}</div>
           <div class="turno-sala">${s.sala}</div>
-          ${s.cir?`<div class="turno-cir">${s.cir}</div>`:''}
-          ${doentes}
+          ${cardContent}
         </div>
       </div>`;
       frag.appendChild(card);
